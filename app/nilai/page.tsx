@@ -16,8 +16,30 @@ export default function NilaiPage() {
   );
 }
 
+function AdminGrades({ submissions, assignments }: { submissions: ReturnType<typeof useStore>["submissions"]; assignments: ReturnType<typeof useStore>["assignments"] }) {
+  return (
+    <div className="page-wrap !px-0 !pb-0 !max-w-none">
+      <PageHeader title="Nilai siswa" desc="Pantau seluruh kiriman dan nilai siswa." right={<a href="/api/export/nilai" className="btn-ghost text-[13px]">Ekspor CSV</a>} />
+      {submissions.length === 0 ? <Empty title="Belum ada nilai siswa" desc="Nilai akan muncul setelah siswa mengumpulkan tugas atau evaluasi." /> : (
+        <div className="card overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-[13.5px] min-w-[720px]">
+              <thead><tr className="text-left text-[12px] text-ink-muted bg-wash/50"><th className="px-4 py-2.5 font-medium">Siswa</th><th className="px-4 py-2.5 font-medium">Tugas / evaluasi</th><th className="px-4 py-2.5 font-medium">Kelas</th><th className="px-4 py-2.5 font-medium">Nilai</th><th className="px-4 py-2.5 font-medium">Status</th><th className="px-4 py-2.5 font-medium">Dikumpulkan</th></tr></thead>
+              <tbody>{submissions.map((s) => {
+                const assignment = assignments.find((a) => a.id === s.assignmentId);
+                return <tr key={s.id} className="table-row"><td className="px-4 py-2.5 font-medium">{s.siswaNama}<span className="block text-[12px] text-ink-muted">{s.siswaId}</span></td><td className="px-4 py-2.5">{assignment?.judul || s.assignmentId}</td><td className="px-4 py-2.5">{s.kelas}</td><td className="px-4 py-2.5 font-semibold">{s.nilai ?? "—"}</td><td className="px-4 py-2.5"><Badge tone={s.status === "dinilai" ? "green" : "amber"}>{s.status}</Badge></td><td className="px-4 py-2.5 text-ink-muted">{fmtDateTime(s.submittedAt)}</td></tr>;
+              })}</tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Content() {
   const { user, submissions, assignments } = useStore();
+  if (user?.role === "admin") return <AdminGrades submissions={submissions} assignments={assignments} />;
   const mine = submissions.filter((s) => s.siswaId === user?.id).sort((a, b) => b.submittedAt.localeCompare(a.submittedAt));
   const graded = mine.filter((s) => s.nilai != null);
   const avg = graded.length ? Math.round(graded.reduce((t, s) => t + (s.nilai || 0), 0) / graded.length) : 0;

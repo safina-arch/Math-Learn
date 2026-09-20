@@ -28,6 +28,7 @@ const NAV: Record<string, { href: string; label: string; icon: React.ReactNode }
     { href: "/materi", label: "Materi", icon: <I d="M4 5h16v14H4zM8 9h8M8 13h8M8 17h5" /> },
     { href: "/tugas", label: "Tugas", icon: <I d="M6 3h9l4 4v14H6zM14 3v5h5M9 13h7M9 17h7" /> },
     { href: "/kelola", label: "Kelola", icon: <I d="M4 6h16M4 12h16M4 18h10" /> },
+    { href: "/nilai", label: "Nilai siswa", icon: <I d="M4 20V10M10 20V4M16 20v-8M22 20H2" /> },
     { href: "/pengumuman", label: "Pengumuman", icon: <I d="M6 9a6 6 0 0112 0c0 5 2 6 2 6H4s2-1 2-6M10 20a2 2 0 004 0" /> },
   ],
 };

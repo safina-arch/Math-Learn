@@ -27,7 +27,7 @@ export default function Landing() {
       </header>
 
       <main className="mx-auto max-w-[1100px] px-4">
-        <section className="py-12 sm:py-20 grid lg:grid-cols-[1.1fr_0.9fr] gap-10 items-center">
+        <section className="py-12 sm:py-20">
           <div>
             <p className="badge bg-primary-50 text-primary border-primary-100 mb-4">Untuk siswa, guru, dan admin SMP</p>
             <h1 className="text-[30px] sm:text-[44px] leading-[1.08] font-bold tracking-tight">
@@ -42,29 +42,7 @@ export default function Landing() {
             </div>
           </div>
 
-          <div className="card overflow-hidden">
-            <div className="border-b border-line px-4 py-3 flex items-center gap-1.5">
-              <span className="h-2.5 w-2.5 rounded-full bg-[#E5E5E8]" />
-              <span className="h-2.5 w-2.5 rounded-full bg-[#E5E5E8]" />
-              <span className="h-2.5 w-2.5 rounded-full bg-primary/70" />
-              <span className="ml-2 text-[12.5px] text-ink-muted">Beranda siswa — ringkasan hari ini</span>
-            </div>
-            <div className="p-4 space-y-3 bg-wash/50">
-              <div className="card card-pad">
-                <p className="text-[12.5px] text-ink-muted font-medium">PROGRES MATERI</p>
-                <p className="text-[20px] font-bold mt-0.5">2 dari 3 selesai</p>
-                <div className="mt-2 h-1.5 rounded-full bg-wash border border-line overflow-hidden"><div className="h-full bg-primary rounded-full" style={{ width: "66%" }} /></div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="card card-pad"><p className="text-[12.5px] text-ink-muted">Tugas mendatang</p><p className="font-bold text-[18px]">2</p></div>
-                <div className="card card-pad"><p className="text-[12.5px] text-ink-muted">Nilai terakhir</p><p className="font-bold text-[18px]">88</p></div>
-              </div>
-              <div className="card card-pad flex gap-3 items-start">
-                <span className="mt-0.5 flex h-7 w-7 items-center justify-center rounded-lg bg-primary-50 text-primary font-bold text-[13px]">!</span>
-                <div><p className="text-[13.5px] font-semibold">Evaluasi dibuka sampai 15 Okt</p><p className="text-[12.5px] text-ink-muted">45 menit · jangan pindah tab saat mengerjakan.</p></div>
-              </div>
-            </div>
-          </div>
+
         </section>
 
         <section className="pb-4">
