@@ -1,0 +1,97 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-sans: "Plus Jakarta Sans", system-ui, sans-serif;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  @apply bg-canvas text-ink font-sans text-[14.5px] leading-relaxed;
+}
+
+/* Notion-like primitives */
+@layer components {
+  .page-wrap {
+    @apply mx-auto w-full max-w-notion px-4 sm:px-6 pb-24;
+  }
+  .card {
+    @apply bg-white border border-line rounded-xl2 shadow-card;
+  }
+  .card-pad {
+    @apply p-4 sm:p-5;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-medium transition-colors select-none cursor-pointer border border-transparent;
+  }
+  .btn-primary {
+    @apply btn bg-primary text-white hover:bg-primary-700 active:bg-primary-800;
+  }
+  .btn-ghost {
+    @apply btn bg-white border-line text-ink-soft hover:bg-wash;
+  }
+  .btn-danger {
+    @apply btn bg-white border-line text-red-600 hover:bg-red-50;
+  }
+  .input {
+    @apply w-full rounded-lg border border-line bg-white px-3 py-2 text-sm outline-none placeholder:text-ink-faint focus:border-primary focus:ring-2 focus:ring-primary-100;
+  }
+  .label {
+    @apply block text-[13px] font-medium text-ink-soft mb-1.5;
+  }
+  .h1 {
+    @apply text-[26px] sm:text-[32px] font-bold tracking-tight text-ink;
+  }
+  .h2 {
+    @apply text-[17px] font-semibold tracking-tight text-ink;
+  }
+  .muted {
+    @apply text-[13.5px] text-ink-muted;
+  }
+  .divider {
+    @apply border-t border-line;
+  }
+  .navlink {
+    @apply flex items-center gap-2.5 rounded-lg px-3 py-2 text-[14px] text-ink-soft hover:bg-wash transition-colors;
+  }
+  .navlink-active {
+    @apply bg-primary-50 text-primary font-medium;
+  }
+  .badge {
+    @apply inline-flex items-center rounded-md px-2 py-0.5 text-[12px] font-medium border;
+  }
+  .table-row {
+    @apply border-t border-line hover:bg-wash/60 transition-colors;
+  }
+  .prose-doc h3 {
+    @apply text-[15px] font-semibold mt-4 mb-1.5;
+  }
+  .prose-doc p {
+    @apply text-[14px] text-ink-soft mb-2.5;
+  }
+  .prose-doc ul {
+    @apply list-disc pl-5 text-[14px] text-ink-soft space-y-1 mb-3;
+  }
+  .prose-doc code {
+    @apply bg-wash border border-line rounded px-1.5 py-0.5 text-[13px] font-mono text-primary-800;
+  }
+}
+
+::selection {
+  background: #edd9f7;
+}
+
+/* thin scrollbars like Notion */
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: #d4d4d8;
+  border-radius: 8px;
+}
