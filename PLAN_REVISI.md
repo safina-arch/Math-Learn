@@ -1,7 +1,7 @@
 # Plan Revisi Math-Learn — Status Eksekusi
 
 Tanggal: 23 Sep 2026 · Proyek: `mathlearn/` (Next.js 14 + Supabase + localStorage fallback)
-**Status: SELESAI & LIVE di https://math-learn-sand.vercel.app (deploy `2f5e11d`)**
+**Status: SELESAI & LIVE di https://math-learn-sand.vercel.app (deploy `2aef13f`)**
 
 Legenda: ✅ selesai & terverifikasi · ⏳ menunggu kredensial (Supabase & Vercel token)
 
@@ -15,7 +15,7 @@ Legenda: ✅ selesai & terverifikasi · ⏳ menunggu kredensial (Supabase & Verc
 | `app/api/upload/route.ts` — error eksplisit di production, fallback lokal hanya untuk dev, infer MIME dari ekstensi | ✅ (terverifikasi: production tanpa Supabase → pesan jelas; dev → local fallback jalan) |
 | `.env.local` (lokal) + env Vercel (3 kunci Supabase) | ✅ 3 env var diisi via Vercel API (URL, anon plain; service-role sensitive) |
 | Migrasi 4 PDF `public/uploads/` ke bucket `materi` | ✅ 4 file terupload; public URL tes 200 (1 MB) |
-| Redeploy kode terbaru ke Vercel | ✅ push GitHub `safina-arch/Math-Learn` main `db77f2f..2f5e11d` → auto-build READY → live di math-learn-sand.vercel.app (buildId `9avrc3LS6WxEHvvhk13lV` — kode revisi) |
+| Redeploy kode terbaru ke Vercel | ✅ push GitHub `safina-arch/Math-Learn` main → auto-build READY → live di math-learn-sand.vercel.app; deploy terakhir `2aef13f` (termasuk fix redirect 307 tanpa `Location`) |
 
 ## Fase 1 — Sidebar terpisah + hapus "Kelola" ✅
 
@@ -59,7 +59,8 @@ Legenda: ✅ selesai & terverifikasi · ⏳ menunggu kredensial (Supabase & Verc
 - ✅ `GET /api/sync` → `configured:true` (Supabase env aktif); `POST /api/sync` tulis OK.
 - ✅ `POST /api/upload` → `storage:supabase` + public URL `…/storage/v1/object/public/materi/…` → buka 200. **Bug foto siswa & file lintas device RESOLVED.**
 - ✅ `POST/GET /api/presence` heartbeat & daftar user aktif OK (row E2E dibersihkan).
-- ✅ `/lkpd` 200, `/latihan` 200; `/` 200; `/tugas` 307→`/lkpd`, `/kelola` 307→`/materi`.
+- ✅ `/lkpd` 200, `/latihan` 200; `/` 200; `/tugas` 307 + `Location: /lkpd` → follow 200; `/kelola` 307 + `Location: /materi` → follow 200; `/tugas/abc` tetap 200 (detail tidak ikut redirect).
+- 🐞 **Bug redirect ditemukan & diperbaiki (deploy `2aef13f`):** `redirect()` di halaman yang diprender statis ternyata menyimpan status 307 **tanpa header `Location`** (terverifikasi dari `.next/server/app/tugas.meta` + reproduksi lokal `next start`) → browser menampilkan shell `__next_error__` alih-alih pindah halaman. Perbaikan: `redirects()` di `next.config.mjs` (level platform, sebelum render) + `export const dynamic = "force-dynamic"` di `app/tugas/page.tsx` & `app/kelola/page.tsx` sebagai fallback.
 
 ## Status akhir: SELURUH PLAN SELESAI & LIVE
 
