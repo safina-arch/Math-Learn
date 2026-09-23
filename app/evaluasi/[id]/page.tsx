@@ -31,6 +31,7 @@ function Exam() {
   const [left, setLeft] = useState(duration);
   const [started, setStarted] = useState(false);
   const [warn, setWarn] = useState<null | { count: number }>(null);
+  const [ask, setAsk] = useState(false);
   const [done, setDone] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
   const [activeQuestion, setActiveQuestion] = useState(1);
@@ -141,6 +142,15 @@ function Exam() {
           <Badge tone="red">EVALUASI · {a.durasiMenit} MENIT</Badge>
           <h1 className="h1 mt-2">{a.judul}</h1>
           <p className="muted mt-1.5">{a.deskripsi}</p>
+          {a.deskripsiGambar?.length ? (
+            <div className="flex flex-wrap gap-2 mt-2">
+              {a.deskripsiGambar.map((g, i) => (
+                <a key={`${g.url}-${i}`} href={g.url} target="_blank" rel="noreferrer">
+                  <img src={g.url} alt={g.name || "Foto instruksi"} className="max-h-52 rounded-lg border border-line object-contain bg-white" />
+                </a>
+              ))}
+            </div>
+          ) : null}
           <ul className="text-[13.5px] text-ink-soft list-disc pl-5 mt-3 space-y-1">
             <li>{a.questions.length} soal · penguncian tab aktif.</li>
             <li>Waktu habis = otomatis terkumpul.</li>
@@ -166,15 +176,37 @@ function Exam() {
             <p className="text-[12px] text-ink-muted">Pelanggaran pindah tab: <b className={cheatRef.current ? "text-red-600" : ""}>{warn?.count ?? 0}x</b></p>
           </div>
           <span className={`font-mono font-bold text-[20px] tabular-nums ${danger ? "text-red-600" : "text-ink"}`}>{fmtCountdown(left)}</span>
-          <button className="btn-primary !py-2 text-[13px]" disabled={busy} onClick={submit}>{busy ? "Mengumpulkan…" : "Kumpulkan"}</button>
+          <button className="btn-primary !py-2 text-[13px]" disabled={busy} onClick={() => setAsk(true)}>{busy ? "Mengumpulkan…" : "Kumpulkan"}</button>
         </div>
       </div>
+
+      <Modal open={ask} onClose={() => setAsk(false)} title="Yakin mengumpulkan?">
+        <p className="text-[14.5px]">Seluruh jawaban evaluasi akan dikirim ke guru sekarang juga.</p>
+        <p className="muted mt-2">Periksa kembali semua jawaban dan foto. Setelah dikumpulkan, jawaban tidak dapat diubah lagi.</p>
+        <div className="mt-4 flex gap-2">
+          <button
+            className="btn-primary flex-1"
+            disabled={busy}
+            onClick={() => { setAsk(false); void submit(); }}
+          >{busy ? "Mengumpulkan…" : "Ya, kumpulkan"}</button>
+          <button className="btn-ghost" onClick={() => setAsk(false)}>Batal</button>
+        </div>
+      </Modal>
 
       <div className="mt-4 space-y-3 max-w-[760px]">
         {ordered.map((q, i) => (
           <div key={q.id} className="card card-pad" onFocusCapture={() => setActiveQuestion(i + 1)}>
             <p className="text-[12.5px] font-medium text-ink-muted">SOAL {i + 1} · {q.tipe.toUpperCase()} · {q.bobot} poin</p>
             <p className="text-[14.5px] font-medium mt-1">{q.teks}</p>
+            {q.gambar?.length ? (
+              <div className="flex flex-wrap gap-2 mt-2">
+                {q.gambar.map((g, gi) => (
+                  <a key={`${g.url}-${gi}`} href={g.url} target="_blank" rel="noreferrer">
+                    <img src={g.url} alt={g.name || "Foto soal"} className="max-h-52 rounded-lg border border-line object-contain bg-white" />
+                  </a>
+                ))}
+              </div>
+            ) : null}
             {q.tipe === "pg" ? (
               <div className="mt-3 space-y-1.5">
                 {q.opsi?.map((op) => (

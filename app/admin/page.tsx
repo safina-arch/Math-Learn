@@ -4,8 +4,15 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { AppShell, Guard } from "@/components/shell";
 import { Badge, PageHeader, Stat } from "@/components/ui";
+import { UserModal } from "@/components/user-modal";
 import { useStore } from "@/lib/store";
-import { nowIso, uid } from "@/lib/utils";
+import { fmtDateTime, nowIso, uid } from "@/lib/utils";
+import type { Role, User } from "@/lib/types";
+
+type AccountInput = User & { password?: string };
+type Tab = "siswa" | "guru" | "admin";
+
+const TAB_LABEL: Record<Tab, string> = { siswa: "Siswa", guru: "Guru", admin: "Akun admin" };
 
 export default function AdminPage() {
   return (
@@ -18,58 +25,111 @@ export default function AdminPage() {
 }
 
 function Content() {
-  const { users, upsertUser, deleteUser, impersonate, events, upsertEvent, deleteEvent, submissions, assignments, addNotification } = useStore();
+  const { users, presence, upsertUser, deleteUser, impersonate, events, upsertEvent, deleteEvent, submissions, assignments, addNotification } = useStore();
   const router = useRouter();
-  const [nama, setNama] = useState("");
-  const [email, setEmail] = useState("");
-  const [role, setRole] = useState("siswa");
-  const [kelas, setKelas] = useState("VIII-A");
+  const [tab, setTab] = useState<Tab>("siswa");
+  const [uOpen, setUOpen] = useState(false);
+  const [editU, setEditU] = useState<AccountInput | null>(null);
   const [evJudul, setEvJudul] = useState("");
   const [evTanggal, setEvTanggal] = useState("");
   const [evDeskripsi, setEvDeskripsi] = useState("");
 
+  const role: Role = tab;
+  const list = users.filter((u) => u.role === role);
+  const now = Date.now();
+  const activeNow = presence.filter((p) => now - Date.parse(p.lastSeen) < 60_000);
+  const activeIds = new Set(activeNow.map((p) => p.userId));
+  const inactiveCount = Math.max(0, users.length - activeNow.length);
+
+  function saveUser(u: AccountInput) {
+    const isNew = !users.some((x) => x.id === u.id);
+    upsertUser(u);
+    if (isNew) addNotification({ userId: "all", kategori: "sistem", judul: "Pengguna baru terdaftar", isi: `${u.nama} (${u.role})` });
+    setUOpen(false);
+    setEditU(null);
+  }
+
   return (
     <div className="page-wrap !px-0 !pb-0 !max-w-none">
-      <PageHeader title="Administrasi" desc="Kelola akun, impersonasi, statistik global, dan kalender akademik." />
+      <PageHeader
+        title="Administrasi"
+        desc="Manajemen siswa & guru terpisah, kehadiran pengguna, statistik global, dan kalender akademik."
+        right={<button className="btn-primary text-[13px]" onClick={() => { setEditU(null); setUOpen(true); }}>{`+ Tambah ${tab}`}</button>}
+      />
       <div className="grid sm:grid-cols-4 gap-3 mb-3">
-        <Stat label="Pengguna aktif" value={String(users.length)} />
-        <Stat label="Ujian berjalan" value={String(assignments.filter((a) => a.tipe === "evaluasi").length)} />
+        <Stat label="Total pengguna" value={String(users.length)} sub={`${users.filter((u) => u.role === "siswa").length} siswa · ${users.filter((u) => u.role === "guru").length} guru`} />
+        <Stat label="Aktif sekarang" value={String(activeNow.length)} sub={presence.length ? "heartbeat < 60 detik" : "butuh Supabase"} />
+        <Stat label="Ujian tersedia" value={String(assignments.filter((a) => a.tipe === "evaluasi").length)} />
         <Stat label="Kiriman" value={String(submissions.length)} />
-        <Stat label="Beban penyimpanan" value="~1 MB" sub="mode demo lokal" />
       </div>
 
       <div className="grid lg:grid-cols-[1fr_340px] gap-3">
         <div className="card overflow-hidden">
-          <div className="px-4 py-3 border-b border-line"><p className="h2">Manajemen akun</p></div>
-          <form
-            className="p-4 grid sm:grid-cols-[1fr_1fr_120px_100px_auto] gap-2 border-b border-line bg-wash/50"
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (!nama.trim() || !email.trim()) return;
-              upsertUser({ id: uid("u"), nama: nama.trim(), email: email.trim(), role: role as "siswa" | "guru" | "admin", kelas });
-              addNotification({ userId: "all", kategori: "sistem", judul: "Pengguna baru terdaftar", isi: `${nama} (${role})` });
-              setNama(""); setEmail("");
-            }}
-          >
-            <input className="input" value={nama} onChange={(e) => setNama(e.target.value)} placeholder="Nama" />
-            <input className="input" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" />
-            <select className="input" value={role} onChange={(e) => setRole(e.target.value)}><option value="siswa">siswa</option><option value="guru">guru</option><option value="admin">admin</option></select>
-            <select className="input" value={kelas} onChange={(e) => setKelas(e.target.value)}>{["VIII-A", "VIII-B", "VII-A", "IX-A", "-"].map((k) => <option key={k}>{k}</option>)}</select>
-            <button className="btn-primary text-[13px]" type="submit">Tambah</button>
-          </form>
+          <div className="px-4 py-3 border-b border-line flex items-center justify-between gap-2">
+            <p className="h2">Manajemen akun</p>
+            <div className="flex gap-1">
+              {(["siswa", "guru", "admin"] as Tab[]).map((t) => (
+                <button key={t} onClick={() => setTab(t)} className={`btn !py-1.5 !px-3 !text-[12.5px] ${tab === t ? "bg-ink text-white" : "btn-ghost"}`}>{TAB_LABEL[t]} ({users.filter((u) => u.role === t).length})</button>
+              ))}
+            </div>
+          </div>
           <div className="divide-y divide-line">
-            {users.map((u) => (
-              <div key={u.id} className="px-4 py-2.5 flex items-center gap-2.5">
-                <div className="min-w-0 flex-1"><p className="text-[14px] font-medium truncate">{u.nama}</p><p className="text-[12.5px] text-ink-muted">{u.email} · {u.kelas}</p></div>
-                <Badge tone={u.role === "admin" ? "red" : u.role === "guru" ? "purple" : "gray"}>{u.role}</Badge>
-                <button className="btn-ghost !py-1 !text-[12.5px]" onClick={() => { impersonate(u.id); router.push("/dashboard"); }}>Masuk sebagai</button>
-                <button className="text-red-600 text-[12.5px]" onClick={() => deleteUser(u.id)}>Hapus</button>
-              </div>
-            ))}
+            {list.length === 0 ? (
+              <p className="muted p-4">Belum ada {TAB_LABEL[tab].toLowerCase()} terdaftar.</p>
+            ) : list.map((u) => {
+              const isActive = activeIds.has(u.id);
+              return (
+                <div key={u.id} className="px-4 py-3 flex items-center gap-3">
+                  {u.fotoProfil ? (
+                    <img src={u.fotoProfil} alt={u.nama} className="h-10 w-10 rounded-full object-cover border border-line shrink-0" />
+                  ) : (
+                    <span className="h-10 w-10 rounded-full bg-wash border border-line flex items-center justify-center text-[15px] font-semibold text-ink-soft shrink-0">{u.nama.slice(0, 1).toUpperCase()}</span>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[14px] font-medium truncate flex items-center gap-1.5">
+                      {u.nama}
+                      {isActive ? <span className="inline-block h-2 w-2 rounded-full bg-green-500" title="Aktif sekarang" /> : null}
+                    </p>
+                    <p className="text-[12.5px] text-ink-muted truncate">
+                      {u.email}{u.kelas && u.kelas !== "-" ? ` · ${u.kelas}` : ""}{u.nisn ? ` · NISN ${u.nisn}` : ""}
+                      {u.ttl ? ` · Lahir ${u.ttl}` : ""}
+                    </p>
+                  </div>
+                  <Badge tone={u.role === "admin" ? "red" : u.role === "guru" ? "purple" : "gray"}>{u.role}</Badge>
+                  <button className="btn-ghost !py-1 !text-[12.5px]" onClick={() => { impersonate(u.id); router.push("/dashboard"); }}>Masuk sebagai</button>
+                  <button className="btn-ghost !py-1 !text-[12.5px]" onClick={() => { setEditU(u); setUOpen(true); }}>Ubah</button>
+                  <button className="text-red-600 text-[12.5px]" onClick={() => deleteUser(u.id)}>Hapus</button>
+                </div>
+              );
+            })}
           </div>
         </div>
 
         <div className="space-y-3">
+          <div className="card card-pad">
+            <p className="h2 mb-2">Pengguna aktif sekarang ({activeNow.length})</p>
+            {presence.length === 0 ? (
+              <p className="muted">Belum ada data kehadiran. Fitur ini aktif setelah Supabase dikonfigurasi dan user masuk.</p>
+            ) : activeNow.length === 0 ? (
+              <p className="muted">Tidak ada pengguna yang aktif saat ini.</p>
+            ) : (
+              <div className="space-y-1.5">
+                {activeNow.map((p) => {
+                  const seconds = Math.max(0, Math.round((now - Date.parse(p.lastSeen)) / 1000));
+                  return (
+                    <div key={p.userId} className="flex items-center gap-2 text-[13px]">
+                      <span className="inline-block h-2 w-2 rounded-full bg-green-500 shrink-0" />
+                      <span className="min-w-0 flex-1 truncate font-medium">{p.nama || p.userId}</span>
+                      <Badge tone={p.role === "admin" ? "red" : p.role === "guru" ? "purple" : "gray"}>{p.role || "-"}</Badge>
+                      <span className="text-[11.5px] text-ink-faint shrink-0">{seconds < 60 ? `${seconds}d lalu` : fmtDateTime(p.lastSeen)}</span>
+                    </div>
+                  );
+                })}
+                {inactiveCount > 0 ? <p className="text-[12px] text-ink-faint pt-1">{inactiveCount} pengguna lain tidak aktif.</p> : null}
+              </div>
+            )}
+          </div>
+
           <div className="card card-pad">
             <p className="h2 mb-2">Kalender akademik</p>
             <div className="space-y-2 mb-3">
@@ -102,6 +162,14 @@ function Content() {
           </div>
         </div>
       </div>
+
+      <UserModal
+        open={uOpen}
+        initial={editU}
+        role={role}
+        onClose={() => { setUOpen(false); setEditU(null); }}
+        onSave={saveUser}
+      />
     </div>
   );
 }

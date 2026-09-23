@@ -8,16 +8,21 @@ import type {
   CheatLog,
   Material,
   Notification,
+  Presence,
   Submission,
   User,
 } from "./types";
 import { AUTH_USERS, SEED_ANNOUNCEMENTS, SEED_ASSIGNMENTS, SEED_EVENTS, SEED_MATERIALS } from "./seed";
 import { nowIso, uid } from "./utils";
 
+/** Rekaman akun lengkap (password disimpan agar login bisa diverifikasi di client). */
+type Account = User & { password?: string };
+
 interface Store {
   user: User | null;
   impersonating: User | null;
   users: User[];
+  presence: Presence[];
   materials: Material[];
   assignments: Assignment[];
   submissions: Submission[];
@@ -41,7 +46,7 @@ interface Store {
   addNotification: (n: Omit<Notification, "id" | "createdAt" | "dibaca">) => void;
   markAllRead: (userId: string) => void;
   addCheatLog: (l: Omit<CheatLog, "id" | "timestamp">) => void;
-  upsertUser: (u: User) => void;
+  upsertUser: (u: Account) => void;
   deleteUser: (id: string) => void;
   upsertEvent: (e: AcademicEvent) => void;
   deleteEvent: (id: string) => void;
@@ -50,6 +55,7 @@ interface Store {
 
 const Ctx = createContext<Store | null>(null);
 const KEY = "mathlearn-store-v1";
+const ACCOUNTS_KEY = `${KEY}:users`;
 const MATERIALS_KEY = `${KEY}:materials-v2`;
 const ASSIGNMENTS_KEY = `${KEY}:assignments-v2`;
 const ANNOUNCEMENTS_KEY = `${KEY}:announcements-v2`;
@@ -68,10 +74,23 @@ function load<T>(k: string, fallback: T): T {
   }
 }
 
+async function persistShared(resource: string, data: unknown[], role?: string) {
+  try {
+    await fetch("/api/sync", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ resource, data, role }),
+    });
+  } catch {
+    // Mode lokal tetap memakai localStorage ketika server tidak tersedia.
+  }
+}
+
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [impersonating, setImpersonating] = useState<User | null>(null);
-  const [users, setUsers] = useState<User[]>(AUTH_USERS.map(({ password: _p, ...u }) => u));
+  const [accounts, setAccounts] = useState<Account[]>(AUTH_USERS);
+  const [presence, setPresence] = useState<Presence[]>([]);
   const [materials, setMaterials] = useState<Material[]>(SEED_MATERIALS);
   const [assignments, setAssignments] = useState<Assignment[]>(SEED_ASSIGNMENTS);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
@@ -82,10 +101,14 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
+    const storedAccounts = load<Account[]>(ACCOUNTS_KEY, AUTH_USERS);
+    const accs = storedAccounts.length ? storedAccounts : AUTH_USERS;
+    setAccounts(accs);
+
     const storedUser = load<User | null>(`${KEY}:user`, null);
-    const validUser = storedUser && AUTH_USERS.some((account) => account.id === storedUser.id) ? storedUser : null;
+    const validUser = storedUser && accs.some((account) => account.id === storedUser.id) ? storedUser : null;
     setUser(validUser);
-    setUsers(AUTH_USERS.map(({ password: _p, ...u }) => u));
+
     setMaterials(load<Material[]>(MATERIALS_KEY, SEED_MATERIALS));
     setAssignments(load<Assignment[]>(ASSIGNMENTS_KEY, SEED_ASSIGNMENTS));
     setSubmissions(load<Submission[]>(SUBMISSIONS_KEY, []));
@@ -94,15 +117,77 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     setCheatLogs(load<CheatLog[]>(CHEAT_KEY, []));
     setEvents(load<AcademicEvent[]>(EVENTS_KEY, SEED_EVENTS));
     const storedImpersonating = load<User | null>(`${KEY}:imp`, null);
-    setImpersonating(storedImpersonating && AUTH_USERS.some((account) => account.id === storedImpersonating.id) ? storedImpersonating : null);
+    setImpersonating(storedImpersonating && accs.some((account) => account.id === storedImpersonating.id) ? storedImpersonating : null);
     setReady(true);
   }, []);
 
   useEffect(() => {
     if (!ready) return;
+    let active = true;
+    async function syncShared() {
+      try {
+        const response = await fetch("/api/sync", { cache: "no-store" });
+        if (response.ok && active) {
+          const result = await response.json();
+          if (result.configured && result.data) {
+            const data = result.data as Record<string, unknown>;
+            if (Array.isArray(data.materials)) setMaterials(data.materials as Material[]);
+            if (Array.isArray(data.assignments)) setAssignments(data.assignments as Assignment[]);
+            if (Array.isArray(data.submissions)) setSubmissions(data.submissions as Submission[]);
+            if (Array.isArray(data.announcements)) setAnnouncements(data.announcements as Announcement[]);
+            if (Array.isArray(data.notifications)) setNotifications(data.notifications as Notification[]);
+            if (Array.isArray(data.cheatLogs)) setCheatLogs(data.cheatLogs as CheatLog[]);
+            if (Array.isArray(data.events)) setEvents(data.events as AcademicEvent[]);
+            if (Array.isArray(data.users)) setAccounts(data.users as Account[]);
+          }
+        }
+      } catch {
+        // Fallback localStorage digunakan saat offline atau Supabase belum tersedia.
+      }
+      try {
+        const p = await fetch("/api/presence", { cache: "no-store" });
+        if (p.ok && active) {
+          const pj = await p.json();
+          if (pj.configured && Array.isArray(pj.data)) setPresence(pj.data as Presence[]);
+        }
+      } catch {
+        // Presence hanya tersedia bila Supabase dikonfigurasi.
+      }
+    }
+    void syncShared();
+    const timer = window.setInterval(syncShared, 5000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [ready]);
+
+  // Heartbeat kehadiran → ditampilkan sebagai "pengguna aktif" di halaman admin.
+  useEffect(() => {
+    if (!ready || !user) return;
+    const beat = (offline = false) => {
+      try {
+        void fetch("/api/presence", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(offline ? { userId: user.id, offline: true } : { userId: user.id, nama: user.nama, role: user.role }),
+          keepalive: true,
+        });
+      } catch {}
+    };
+    beat();
+    const timer = window.setInterval(() => beat(), 15000);
+    const bye = () => beat(true);
+    window.addEventListener("pagehide", bye);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("pagehide", bye);
+      bye();
+    };
+  }, [ready, user]);
+
+  useEffect(() => {
+    if (!ready) return;
     try {
       localStorage.setItem(`${KEY}:user`, JSON.stringify(user));
-      localStorage.setItem(`${KEY}:users`, JSON.stringify(users));
+      localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(accounts));
       localStorage.setItem(MATERIALS_KEY, JSON.stringify(materials));
       localStorage.setItem(ASSIGNMENTS_KEY, JSON.stringify(assignments));
       localStorage.setItem(SUBMISSIONS_KEY, JSON.stringify(submissions));
@@ -112,15 +197,20 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       localStorage.setItem(EVENTS_KEY, JSON.stringify(events));
       localStorage.setItem(`${KEY}:imp`, JSON.stringify(impersonating));
     } catch {}
-  }, [ready, user, users, materials, assignments, submissions, announcements, notifications, cheatLogs, events, impersonating]);
+  }, [ready, user, accounts, materials, assignments, submissions, announcements, notifications, cheatLogs, events, impersonating]);
 
   const value = useMemo<Store>(() => {
     const effective = impersonating || user;
-    void effective;
+    const users: User[] = accounts.map(({ password: _p, ...u }) => u);
+    const syncUsers = (next: Account[]) => {
+      void persistShared("users", next, effective?.role);
+      return next;
+    };
     return {
       user: impersonating || user,
       impersonating,
       users,
+      presence,
       materials,
       assignments,
       submissions,
@@ -129,9 +219,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       cheatLogs,
       events,
       login: (username, password) => {
-        const found = AUTH_USERS.find((u) => u.email.toLowerCase() === username.toLowerCase().trim());
+        const found = accounts.find((u) => u.email.toLowerCase() === username.toLowerCase().trim());
         if (found && found.password === password) {
-          const u: User = { id: found.id, nama: found.nama, email: found.email, role: found.role, kelas: found.kelas };
+          const { password: _p, ...u } = found;
           setUser(u);
           setImpersonating(null);
           return null;
@@ -139,13 +229,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         return "Username atau kata sandi salah.";
       },
       register: (nama, email, password, kelas) => {
-        if (users.some((u) => u.email.toLowerCase() === email.toLowerCase())) return "Email sudah terdaftar.";
-        const u: User = { id: uid("u"), nama, email, role: "siswa", kelas };
-        setUsers((p) => [...p, u]);
-        const pw = load<Record<string, string>>(`${KEY}:pw`, {});
-        try {
-          localStorage.setItem(`${KEY}:pw`, JSON.stringify({ ...pw, [email.toLowerCase()]: password }));
-        } catch {}
+        if (accounts.some((u) => u.email.toLowerCase() === email.toLowerCase())) return "Email sudah terdaftar.";
+        const acc: Account = { id: uid("u"), nama, email, password, role: "siswa", kelas };
+        setAccounts((p) => syncUsers([...p, acc]));
+        const { password: _p, ...u } = acc;
         setUser(u);
         return null;
       },
@@ -158,22 +245,77 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         if (t) setImpersonating(t);
       },
       stopImpersonate: () => setImpersonating(null),
-      upsertMaterial: (m) => setMaterials((p) => (p.some((x) => x.id === m.id) ? p.map((x) => (x.id === m.id ? m : x)) : [m, ...p])),
-      deleteMaterial: (id) => setMaterials((p) => p.filter((x) => x.id !== id)),
-      upsertAssignment: (a) => setAssignments((p) => (p.some((x) => x.id === a.id) ? p.map((x) => (x.id === a.id ? a : x)) : [a, ...p])),
-      deleteAssignment: (id) => setAssignments((p) => p.filter((x) => x.id !== id)),
-      addSubmission: (s) => setSubmissions((p) => [s, ...p]),
-      updateSubmission: (id, patch) => setSubmissions((p) => p.map((x) => (x.id === id ? { ...x, ...patch } : x))),
-      addAnnouncement: (a) => setAnnouncements((p) => [a, ...p]),
-      deleteAnnouncement: (id) => setAnnouncements((p) => p.filter((x) => x.id !== id)),
-      addNotification: (n) => setNotifications((p) => [{ ...n, id: uid("n"), createdAt: nowIso(), dibaca: false }, ...p].slice(0, 200)),
-      markAllRead: (userId) =>
-        setNotifications((p) => p.map((n) => (n.userId === userId || n.userId === "all" ? { ...n, dibaca: true } : n))),
-      addCheatLog: (l) => setCheatLogs((p) => [{ ...l, id: uid("c"), timestamp: nowIso() }, ...p]),
-      upsertUser: (u) => setUsers((p) => (p.some((x) => x.id === u.id) ? p.map((x) => (x.id === u.id ? u : x)) : [...p, u])),
-      deleteUser: (id) => setUsers((p) => p.filter((x) => x.id !== id)),
-      upsertEvent: (e) => setEvents((p) => (p.some((x) => x.id === e.id) ? p.map((x) => (x.id === e.id ? e : x)) : [...p, e])),
-      deleteEvent: (id) => setEvents((p) => p.filter((x) => x.id !== id)),
+      upsertMaterial: (m) => setMaterials((p) => {
+        const next = p.some((x) => x.id === m.id) ? p.map((x) => (x.id === m.id ? m : x)) : [m, ...p];
+        void persistShared("materials", next, effective?.role);
+        return next;
+      }),
+      deleteMaterial: (id) => setMaterials((p) => {
+        const next = p.filter((x) => x.id !== id);
+        void persistShared("materials", next, effective?.role);
+        return next;
+      }),
+      upsertAssignment: (a) => setAssignments((p) => {
+        const next = p.some((x) => x.id === a.id) ? p.map((x) => (x.id === a.id ? a : x)) : [a, ...p];
+        void persistShared("assignments", next, effective?.role);
+        return next;
+      }),
+      deleteAssignment: (id) => setAssignments((p) => {
+        const next = p.filter((x) => x.id !== id);
+        void persistShared("assignments", next, effective?.role);
+        return next;
+      }),
+      addSubmission: (s) => setSubmissions((p) => {
+        const next = [s, ...p.filter((x) => x.id !== s.id)];
+        void persistShared("submissions", next, effective?.role);
+        return next;
+      }),
+      updateSubmission: (id, patch) => setSubmissions((p) => {
+        const next = p.map((x) => (x.id === id ? { ...x, ...patch } : x));
+        void persistShared("submissions", next, effective?.role);
+        return next;
+      }),
+      addAnnouncement: (a) => setAnnouncements((p) => {
+        const next = [a, ...p];
+        void persistShared("announcements", next, effective?.role);
+        return next;
+      }),
+      deleteAnnouncement: (id) => setAnnouncements((p) => {
+        const next = p.filter((x) => x.id !== id);
+        void persistShared("announcements", next, effective?.role);
+        return next;
+      }),
+      addNotification: (n) => setNotifications((p) => {
+        const next = [{ ...n, id: uid("n"), createdAt: nowIso(), dibaca: false }, ...p].slice(0, 200);
+        void persistShared("notifications", next, effective?.role);
+        return next;
+      }),
+      markAllRead: (userId) => setNotifications((p) => {
+        const next = p.map((n) => (n.userId === userId || n.userId === "all" ? { ...n, dibaca: true } : n));
+        void persistShared("notifications", next, effective?.role);
+        return next;
+      }),
+      addCheatLog: (l) => setCheatLogs((p) => {
+        const next = [{ ...l, id: uid("c"), timestamp: nowIso() }, ...p];
+        void persistShared("cheatLogs", next, effective?.role);
+        return next;
+      }),
+      upsertUser: (u) => setAccounts((p) => {
+        const prev = p.find((x) => x.id === u.id);
+        const merged: Account = { ...prev, ...u, password: u.password || prev?.password || "" };
+        return syncUsers(p.some((x) => x.id === u.id) ? p.map((x) => (x.id === u.id ? merged : x)) : [...p, merged]);
+      }),
+      deleteUser: (id) => setAccounts((p) => syncUsers(p.filter((x) => x.id !== id))),
+      upsertEvent: (e) => setEvents((p) => {
+        const next = p.some((x) => x.id === e.id) ? p.map((x) => (x.id === e.id ? e : x)) : [...p, e];
+        void persistShared("events", next, effective?.role);
+        return next;
+      }),
+      deleteEvent: (id) => setEvents((p) => {
+        const next = p.filter((x) => x.id !== id);
+        void persistShared("events", next, effective?.role);
+        return next;
+      }),
       resetDemo: () => {
         setMaterials(SEED_MATERIALS);
         setAssignments(SEED_ASSIGNMENTS);
@@ -183,7 +325,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         setCheatLogs([]);
       },
     };
-  }, [user, impersonating, users, materials, assignments, submissions, announcements, notifications, cheatLogs, events]);
+  }, [user, impersonating, accounts, presence, materials, assignments, submissions, announcements, notifications, cheatLogs, events]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

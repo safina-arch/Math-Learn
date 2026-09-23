@@ -15,40 +15,66 @@ function safeName(name: string): string {
   return name.replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 120) || "file";
 }
 
+/** Fallback: tebak MIME dari ekstensi bila browser tidak mengirim tipe file. */
+function mimeFromExt(name: string): string {
+  const ext = name.toLowerCase().split(".").pop() || "";
+  if (ext === "pdf") return "application/pdf";
+  if (ext === "png") return "image/png";
+  if (ext === "jpg" || ext === "jpeg") return "image/jpeg";
+  if (ext === "webp") return "image/webp";
+  return "";
+}
+
 /**
- * Upload lampiran materi (PDF/gambar).
- * - Produksi (Supabase dikonfigurasi): simpan ke bucket Storage `materi`, kembalikan public URL.
- * - Lokal/demo: simpan ke `<project>/public/uploads/`, kembalikan path `/uploads/...`
- *   yang langsung bisa dibuka & diunduh di browser.
+ * Upload lampiran (PDF/gambar).
+ * - Supabase terkonfigurasi: simpan ke bucket Storage `materi` → public URL lintas device.
+ * - Production TANPA Supabase: error eksplisit (disk Vercel read-only & ephemeral).
+ * - Mode dev lokal saja: fallback ke `<project>/public/uploads/` + `/api/files/...`.
  */
 async function uploadFile(file: File, index: number) {
   const bytes = Buffer.from(await file.arrayBuffer());
   const stamped = `${Date.now()}-${index}-${safeName(file.name)}`;
+  const contentType = file.type || mimeFromExt(file.name);
 
   const sb = supabaseServer();
   const bucket = process.env.SUPABASE_STORAGE_BUCKET || "materi";
   if (sb && process.env.NEXT_PUBLIC_SUPABASE_URL) {
     try {
       const { error } = await sb.storage.from(bucket).upload(stamped, bytes, {
-        contentType: file.type,
+        contentType,
         upsert: false,
       });
       if (!error) {
         const { data } = sb.storage.from(bucket).getPublicUrl(stamped);
         return { url: data.publicUrl, name: file.name, size: file.size, storage: "supabase" };
       }
-      // bucket belum ada / RLS → jatuh ke penyimpanan lokal
-    } catch {
-      // jatuh ke penyimpanan lokal
+      console.error(`[upload] Supabase storage gagal: ${error.message} → coba penyimpanan lokal`);
+    } catch (err) {
+      console.error("[upload] Supabase storage error:", err);
     }
+    if (process.env.NODE_ENV === "production") {
+      throw new Error(
+        "Gagal menyimpan ke Supabase Storage. Pastikan bucket `materi` sudah dibuat (jalankan supabase/migration-revisi.sql)."
+      );
+    }
+  } else if (process.env.NODE_ENV === "production") {
+    throw new Error(
+      "Penyimpanan cloud (Supabase) belum dikonfigurasi di server ini. Isi env NEXT_PUBLIC_SUPABASE_URL & kunci Supabase."
+    );
   }
 
-  const dir = join(process.cwd(), "public", "uploads");
-  await mkdir(dir, { recursive: true });
-  await writeFile(join(dir, stamped), bytes);
-  // Disajikan via /api/files agar file yang baru diunggah langsung bisa
-  // dibuka tanpa restart server (next start meng-cache daftar public/).
-  return { url: `/api/files/${stamped}`, name: file.name, size: file.size, storage: "local" };
+  // Hanya mode lokal/dev: simpan ke disk proyek.
+  try {
+    const dir = join(process.cwd(), "public", "uploads");
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, stamped), bytes);
+    // Disajikan via /api/files agar file yang baru diunggah langsung bisa
+    // dibuka tanpa restart server (next start meng-cache daftar public/).
+    return { url: `/api/files/${stamped}`, name: file.name, size: file.size, storage: "local" };
+  } catch (err) {
+    console.error("[upload] Penyimpanan lokal gagal:", err);
+    throw new Error("Gagal menyimpan file di server. Konfigurasi Supabase Storage untuk mode produksi.");
+  }
 }
 
 export async function POST(req: Request) {
@@ -59,7 +85,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Tidak ada file." }, { status: 400 });
     }
     for (const file of files) {
-      if (!ALLOWED.has(file.type)) {
+      const contentType = file.type || mimeFromExt(file.name);
+      if (!ALLOWED.has(contentType)) {
         return NextResponse.json({ error: `Format file ${file.name} tidak didukung. Gunakan PDF, PNG, JPG, atau WebP.` }, { status: 400 });
       }
       if (file.size > MAX_BYTES) {
@@ -70,7 +97,9 @@ export async function POST(req: Request) {
     const uploaded = await Promise.all(files.map((file, index) => uploadFile(file, index)));
     // files mempertahankan format lama untuk pemanggil yang hanya mengunggah satu file.
     return NextResponse.json({ ...uploaded[0], files: uploaded });
-  } catch {
-    return NextResponse.json({ error: "Gagal mengunggah file." }, { status: 500 });
+  } catch (err) {
+    const message = err instanceof Error && err.message ? err.message : "Gagal mengunggah file.";
+    console.error("[upload]", err);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

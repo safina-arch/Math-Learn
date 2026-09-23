@@ -6,6 +6,12 @@ export interface User {
   email: string;
   role: Role;
   kelas: string;
+  /** Nomor induk siswa — diisi manual oleh admin. */
+  nisn?: string;
+  /** Tempat, tanggal lahir — format "Bandung, 2011-08-12". */
+  ttl?: string;
+  /** URL foto profil hasil unggahan. */
+  fotoProfil?: string;
 }
 
 export interface MaterialAttachment {
@@ -40,6 +46,8 @@ export interface Question {
   kunci?: string;
   rubrik?: string;
   bobot: number;
+  /** Foto/gambar soal yang ditambahkan guru. */
+  gambar?: MaterialAttachment[];
 }
 
 export interface Assignment {
@@ -47,6 +55,8 @@ export interface Assignment {
   tipe: AssignmentType;
   judul: string;
   deskripsi: string;
+  /** Foto instruksi/gambar pendukung pada deskripsi. */
+  deskripsiGambar?: MaterialAttachment[];
   kelas: string;
   durasiMenit: number | null;
   bukaAt: string | null;
@@ -66,6 +76,8 @@ export interface Submission {
   jawaban: Record<string, string>;
   /** Foto jawaban yang terkait dengan setiap soal. */
   jawabanLampiran?: Record<string, MaterialAttachment[]>;
+  /** Rotasi tampilan foto (derajat) per URL — dikontrol guru saat memeriksa. */
+  fotoRotasi?: Record<string, number>;
   nilai: number | null;
   feedbackAi: Record<string, { skor: number; feedback: string; draft: boolean }>;
   feedbackGuru: string;
@@ -108,4 +120,12 @@ export interface AcademicEvent {
   judul: string;
   tanggal: string;
   deskripsi: string;
+}
+
+export interface Presence {
+  userId: string;
+  nama: string;
+  role: Role;
+  /** ISO timestamp heartbeat terakhir. */
+  lastSeen: string;
 }

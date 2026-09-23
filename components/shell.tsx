@@ -9,25 +9,28 @@ const NAV: Record<string, { href: string; label: string; icon: React.ReactNode }
   siswa: [
     { href: "/dashboard", label: "Beranda", icon: <I d="M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10" /> },
     { href: "/materi", label: "Materi", icon: <I d="M4 5h16v14H4zM8 9h8M8 13h8M8 17h5" /> },
-    { href: "/tugas", label: "Tugas", icon: <I d="M6 3h9l4 4v14H6zM14 3v5h5M9 13h7M9 17h7" /> },
-    { href: "/evaluasi", label: "Evaluasi", icon: <I d="M12 3v12m0 0l-4-4m4 4l4-4M4 21h16" /> },
+    { href: "/lkpd", label: "LKPD", icon: <I d="M6 3h9l4 4v14H6zM14 3v5h5M9 12h6M9 16h4" /> },
+    { href: "/latihan", label: "Latihan", icon: <I d="M12 20h9M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4z" /> },
+    { href: "/evaluasi", label: "Evaluasi", icon: <I d="M9 5h6a1 1 0 011 1v1H8V6a1 1 0 011-1zM8 7H6a1 1 0 00-1 1v11a1 1 0 001 1h12a1 1 0 001-1V8a1 1 0 00-1-1h-2M9 12l2 2 4-4" /> },
     { href: "/nilai", label: "Nilai", icon: <I d="M4 20V10M10 20V4M16 20v-8M22 20H2" /> },
     { href: "/pengumuman", label: "Pengumuman", icon: <I d="M6 9a6 6 0 0112 0c0 5 2 6 2 6H4s2-1 2-6M10 20a2 2 0 004 0" /> },
   ],
   guru: [
     { href: "/dashboard", label: "Beranda", icon: <I d="M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10" /> },
     { href: "/materi", label: "Materi", icon: <I d="M4 5h16v14H4zM8 9h8M8 13h8M8 17h5" /> },
-    { href: "/tugas", label: "Tugas", icon: <I d="M6 3h9l4 4v14H6zM14 3v5h5M9 13h7M9 17h7" /> },
+    { href: "/lkpd", label: "LKPD", icon: <I d="M6 3h9l4 4v14H6zM14 3v5h5M9 12h6M9 16h4" /> },
+    { href: "/latihan", label: "Latihan", icon: <I d="M12 20h9M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4z" /> },
+    { href: "/evaluasi", label: "Evaluasi", icon: <I d="M9 5h6a1 1 0 011 1v1H8V6a1 1 0 011-1zM8 7H6a1 1 0 00-1 1v11a1 1 0 001 1h12a1 1 0 001-1V8a1 1 0 00-1-1h-2M9 12l2 2 4-4" /> },
     { href: "/periksa", label: "Hasil siswa", icon: <I d="M5 13l4 4L19 7" /> },
-    { href: "/kelola", label: "Kelola", icon: <I d="M4 6h16M4 12h16M4 18h10" /> },
     { href: "/pengumuman", label: "Pengumuman", icon: <I d="M6 9a6 6 0 0112 0c0 5 2 6 2 6H4s2-1 2-6M10 20a2 2 0 004 0" /> },
   ],
   admin: [
     { href: "/dashboard", label: "Beranda", icon: <I d="M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10" /> },
     { href: "/admin", label: "Admin", icon: <I d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z" /> },
     { href: "/materi", label: "Materi", icon: <I d="M4 5h16v14H4zM8 9h8M8 13h8M8 17h5" /> },
-    { href: "/tugas", label: "Tugas", icon: <I d="M6 3h9l4 4v14H6zM14 3v5h5M9 13h7M9 17h7" /> },
-    { href: "/kelola", label: "Kelola", icon: <I d="M4 6h16M4 12h16M4 18h10" /> },
+    { href: "/lkpd", label: "LKPD", icon: <I d="M6 3h9l4 4v14H6zM14 3v5h5M9 12h6M9 16h4" /> },
+    { href: "/latihan", label: "Latihan", icon: <I d="M12 20h9M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4z" /> },
+    { href: "/evaluasi", label: "Evaluasi", icon: <I d="M9 5h6a1 1 0 011 1v1H8V6a1 1 0 011-1zM8 7H6a1 1 0 00-1 1v11a1 1 0 001 1h12a1 1 0 001-1V8a1 1 0 00-1-1h-2M9 12l2 2 4-4" /> },
     { href: "/nilai", label: "Nilai siswa", icon: <I d="M4 20V10M10 20V4M16 20v-8M22 20H2" /> },
     { href: "/pengumuman", label: "Pengumuman", icon: <I d="M6 9a6 6 0 0112 0c0 5 2 6 2 6H4s2-1 2-6M10 20a2 2 0 004 0" /> },
   ],
@@ -97,6 +100,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 </div>
               ) : null}
             </div>
+            {user.fotoProfil ? (
+              <img src={user.fotoProfil} alt={user.nama} className="hidden sm:block h-7 w-7 rounded-full object-cover border border-line" />
+            ) : null}
             <span className="hidden sm:block text-[13px] text-ink-soft max-w-[180px] truncate">{user.nama}</span>
             <span className="hidden sm:inline-flex badge bg-primary-50 text-primary border-primary-100 capitalize">{user.role}</span>
             <button className="btn-ghost !py-1.5 text-[13px]" onClick={() => { logout(); router.push("/login"); }}>Keluar</button>
@@ -132,12 +138,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <main className="flex-1 min-w-0 px-4 sm:px-0 py-5 pb-28 lg:pb-16">{children}</main>
       </div>
 
-      <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-white border-t border-line">
-        <div className={`grid`} style={{ gridTemplateColumns: `repeat(${Math.min(5, nav.length)}, 1fr)` }}>
-          {nav.slice(0, 5).map((n) => {
-            const active = pathname === n.href;
+      <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-white border-t border-line overflow-x-auto">
+        <div className="flex min-w-max">
+          {nav.map((n) => {
+            const active = pathname === n.href || pathname.startsWith(n.href + "/");
             return (
-              <Link key={n.href} href={n.href} className={`flex flex-col items-center gap-0.5 py-2.5 text-[11px] ${active ? "text-primary font-semibold" : "text-ink-muted"}`}>
+              <Link key={n.href} href={n.href} className={`flex flex-col items-center gap-0.5 py-2.5 px-3 text-[11px] shrink-0 w-[72px] ${active ? "text-primary font-semibold" : "text-ink-muted"}`}>
                 {n.icon}<span>{n.label}</span>
               </Link>
             );

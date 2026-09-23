@@ -16,7 +16,7 @@ export default function NilaiPage() {
   );
 }
 
-function AdminGrades({ submissions, assignments }: { submissions: ReturnType<typeof useStore>["submissions"]; assignments: ReturnType<typeof useStore>["assignments"] }) {
+function AdminGrades({ submissions, assignments, users }: { submissions: ReturnType<typeof useStore>["submissions"]; assignments: ReturnType<typeof useStore>["assignments"]; users: ReturnType<typeof useStore>["users"] }) {
   return (
     <div className="page-wrap !px-0 !pb-0 !max-w-none">
       <PageHeader title="Nilai siswa" desc="Pantau seluruh kiriman dan nilai siswa." right={<a href="/api/export/nilai" className="btn-ghost text-[13px]">Ekspor CSV</a>} />
@@ -27,7 +27,8 @@ function AdminGrades({ submissions, assignments }: { submissions: ReturnType<typ
               <thead><tr className="text-left text-[12px] text-ink-muted bg-wash/50"><th className="px-4 py-2.5 font-medium">Siswa</th><th className="px-4 py-2.5 font-medium">Tugas / evaluasi</th><th className="px-4 py-2.5 font-medium">Kelas</th><th className="px-4 py-2.5 font-medium">Nilai</th><th className="px-4 py-2.5 font-medium">Status</th><th className="px-4 py-2.5 font-medium">Dikumpulkan</th></tr></thead>
               <tbody>{submissions.map((s) => {
                 const assignment = assignments.find((a) => a.id === s.assignmentId);
-                return <tr key={s.id} className="table-row"><td className="px-4 py-2.5 font-medium">{s.siswaNama}<span className="block text-[12px] text-ink-muted">{s.siswaId}</span></td><td className="px-4 py-2.5">{assignment?.judul || s.assignmentId}</td><td className="px-4 py-2.5">{s.kelas}</td><td className="px-4 py-2.5 font-semibold">{s.nilai ?? "—"}</td><td className="px-4 py-2.5"><Badge tone={s.status === "dinilai" ? "green" : "amber"}>{s.status}</Badge></td><td className="px-4 py-2.5 text-ink-muted">{fmtDateTime(s.submittedAt)}</td></tr>;
+                const siswa = users.find((u) => u.id === s.siswaId);
+                return <tr key={s.id} className="table-row"><td className="px-4 py-2.5 font-medium">{s.siswaNama}<span className="block text-[12px] text-ink-muted">{siswa?.nisn ? `NISN ${siswa.nisn}` : siswa?.email || s.siswaId}</span></td><td className="px-4 py-2.5">{assignment?.judul || s.assignmentId}</td><td className="px-4 py-2.5">{s.kelas}</td><td className="px-4 py-2.5 font-semibold">{s.nilai ?? "—"}</td><td className="px-4 py-2.5"><Badge tone={s.status === "dinilai" ? "green" : "amber"}>{s.status}</Badge></td><td className="px-4 py-2.5 text-ink-muted">{fmtDateTime(s.submittedAt)}</td></tr>;
               })}</tbody>
             </table>
           </div>
@@ -38,8 +39,8 @@ function AdminGrades({ submissions, assignments }: { submissions: ReturnType<typ
 }
 
 function Content() {
-  const { user, submissions, assignments } = useStore();
-  if (user?.role === "admin") return <AdminGrades submissions={submissions} assignments={assignments} />;
+  const { user, submissions, assignments, users } = useStore();
+  if (user?.role === "admin") return <AdminGrades submissions={submissions} assignments={assignments} users={users} />;
   const mine = submissions.filter((s) => s.siswaId === user?.id).sort((a, b) => b.submittedAt.localeCompare(a.submittedAt));
   const graded = mine.filter((s) => s.nilai != null);
   const avg = graded.length ? Math.round(graded.reduce((t, s) => t + (s.nilai || 0), 0) / graded.length) : 0;
@@ -57,7 +58,7 @@ function Content() {
         <div className="card card-pad"><p className="text-[12.5px] text-ink-muted font-medium">Menunggu verifikasi</p><p className="text-[26px] font-bold">{mine.length - graded.length}</p><p className="muted">draf AI / antrean guru</p></div>
       </div>
 
-      {mine.length === 0 ? <Empty title="Belum ada nilai" desc="Kerjakan latihan atau evaluasi untuk melihat hasilnya di sini." action={<Link href="/tugas" className="btn-primary text-[13px]">Ke tugas</Link>} /> : (
+      {mine.length === 0 ? <Empty title="Belum ada nilai" desc="Kerjakan latihan atau evaluasi untuk melihat hasilnya di sini." action={<Link href="/lkpd" className="btn-primary text-[13px]">Ke LKPD</Link>} /> : (
         <div className="space-y-3">
           {mine.map((s) => {
             const a = assignments.find((x) => x.id === s.assignmentId);
@@ -76,12 +77,17 @@ function Content() {
                 <details className="mt-2">
                   <summary className="text-[13px] text-primary cursor-pointer font-medium">Umpan balik per soal</summary>
                   <div className="mt-2 space-y-1.5">
-                    {Object.entries(s.feedbackAi).map(([qid, f]) => (
-                      <div key={qid} className="text-[13px] border border-line rounded-lg px-3 py-2">
-                        <b>{qid}</b> · skor {f.skor} {f.draft ? <span className="text-ink-faint">(draf AI)</span> : null}
-                        <p className="text-ink-soft">{f.feedback}</p>
-                      </div>
-                    ))}
+                    {Object.entries(s.feedbackAi).map(([qid, f]) => {
+                      const qIndex = a ? a.questions.findIndex((q) => q.id === qid) : -1;
+                      const qText = qIndex >= 0 && a ? a.questions[qIndex].teks : "";
+                      return (
+                        <div key={qid} className="text-[13px] border border-line rounded-lg px-3 py-2">
+                          <b>{qIndex >= 0 ? `Soal ${qIndex + 1}` : qid}</b> · skor {f.skor} {f.draft ? <span className="text-ink-faint">(draf AI)</span> : null}
+                          {qText ? <p className="text-ink-faint text-[12.5px] truncate">{qText}</p> : null}
+                          <p className="text-ink-soft">{f.feedback}</p>
+                        </div>
+                      );
+                    })}
                   </div>
                 </details>
               </div>

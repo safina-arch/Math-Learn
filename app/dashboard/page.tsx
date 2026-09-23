@@ -19,7 +19,7 @@ function SiswaDash() {
 
   return (
     <div>
-      <PageHeader title={`Halo, ${user?.nama.split(" ")[0]}`} desc="Ringkasan belajarmu hari ini. Fokus ke satu tugas dalam satu waktu." />
+      <PageHeader title={`Halo, ${user?.nama || "Siswa"}`} desc="Ringkasan belajarmu hari ini. Fokus ke satu tugas dalam satu waktu." />
       <div className="grid sm:grid-cols-3 gap-3">
         <Stat label="Tugas mendatang" value={String(upcoming.length)} sub="belum dikumpulkan" />
         <Stat label="Nilai terakhir" value={last?.nilai != null ? String(last.nilai) : "—"} sub={lastAssign?.judul.slice(0, 34) || "belum ada nilai"} />
@@ -31,7 +31,7 @@ function SiswaDash() {
           <div className="card card-pad">
             <div className="flex items-center justify-between mb-2">
               <p className="h2">Tugas mendatang</p>
-              <Link href="/tugas" className="text-[13px] text-primary font-medium">Lihat semua</Link>
+              <Link href="/lkpd" className="text-[13px] text-primary font-medium">Lihat semua</Link>
             </div>
             {upcoming.length === 0 ? <p className="muted">Semua tugas selesai. Kerja bagus.</p> : (
               <div className="divide-y divide-line -mx-1">
@@ -84,16 +84,16 @@ function SiswaDash() {
 }
 
 function GuruDash() {
-  const { submissions, assignments, cheatLogs, announcements } = useStore();
+  const { user, submissions, assignments, cheatLogs, announcements } = useStore();
   const pending = submissions.filter((s) => s.status !== "dinilai");
   const activeEval = assignments.filter((a) => a.tipe === "evaluasi");
 
   return (
     <div>
       <PageHeader
-        title="Ruang guru"
+        title={`Halo, ${user?.nama || "Guru"}`}
         desc="Periksa kiriman, pantau evaluasi berjalan, dan kelola konten kelas."
-        right={<><Link href="/kelola" className="btn-ghost text-[13px]">Buat materi / soal</Link><Link href="/periksa" className="btn-primary text-[13px]">Periksa ({pending.length})</Link></>}
+        right={<><Link href="/materi" className="btn-ghost text-[13px]">Kelola materi</Link><Link href="/periksa" className="btn-primary text-[13px]">Periksa ({pending.length})</Link></>}
       />
       <div className="grid sm:grid-cols-3 gap-3">
         <Stat label="Perlu diperiksa" value={String(pending.length)} sub="kiriman menunggu keputusan" />
@@ -129,10 +129,10 @@ function GuruDash() {
 }
 
 function AdminDash() {
-  const { users, assignments, submissions, events } = useStore();
+  const { user, users, assignments, submissions, events } = useStore();
   return (
     <div>
-      <PageHeader title="Dasbor admin" desc="Kesehatan sistem, pengguna, dan kalender akademik." right={<Link href="/admin" className="btn-primary text-[13px]">Kelola sistem</Link>} />
+      <PageHeader title={`Halo, ${user?.nama || "Admin"}`} desc="Kesehatan sistem, pengguna, dan kalender akademik." right={<Link href="/admin" className="btn-primary text-[13px]">Kelola sistem</Link>} />
       <div className="grid sm:grid-cols-4 gap-3">
         <Stat label="Total pengguna" value={String(users.length)} sub={`${users.filter((u) => u.role === "siswa").length} siswa`} />
         <Stat label="Guru" value={String(users.filter((u) => u.role === "guru").length)} />

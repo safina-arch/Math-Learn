@@ -27,6 +27,7 @@ function Work() {
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [answerAttachments, setAnswerAttachments] = useState<Record<string, import("@/lib/types").MaterialAttachment[]>>({});
   const [busy, setBusy] = useState(false);
+  const [ask, setAsk] = useState(false);
   const [result, setResult] = useState<{ nilai: number; pgBenar: number } | null>(null);
 
   const ordered = useMemo(() => {
@@ -37,6 +38,7 @@ function Work() {
 
   if (!a) return <div className="page-wrap !px-0"><p className="muted">Tugas tidak ditemukan.</p></div>;
   const already = submissions.find((s) => s.assignmentId === a.id && s.siswaId === user?.id);
+  const backHref = a.tipe === "lkpd" ? "/lkpd" : "/latihan";
 
   async function submit() {
     if (!user || busy) return;
@@ -99,7 +101,7 @@ function Work() {
 
   return (
     <div className="page-wrap !px-0 !pb-0 !max-w-none">
-      <Link href="/tugas" className="text-[13px] text-ink-muted hover:text-primary">← Semua tugas</Link>
+      <Link href={backHref} className="text-[13px] text-ink-muted hover:text-primary">← Semua {a.tipe === "lkpd" ? "LKPD" : "latihan"}</Link>
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <Badge tone="purple">{a.tipe.toUpperCase()}</Badge>
         <Badge>{a.kelas}</Badge>
@@ -107,12 +109,30 @@ function Work() {
       </div>
       <h1 className="h1 mt-2">{a.judul}</h1>
       <p className="muted mt-1 max-w-[680px]">{a.deskripsi}</p>
+      {a.deskripsiGambar?.length ? (
+        <div className="flex flex-wrap gap-2 mt-2">
+          {a.deskripsiGambar.map((g, i) => (
+            <a key={`${g.url}-${i}`} href={g.url} target="_blank" rel="noreferrer">
+              <img src={g.url} alt={g.name || "Foto instruksi"} className="max-h-52 rounded-lg border border-line object-contain bg-white" />
+            </a>
+          ))}
+        </div>
+      ) : null}
 
       <div className="mt-5 space-y-3 max-w-[760px]">
         {ordered.map((q, i) => (
           <div key={q.id} className="card card-pad">
             <p className="text-[12.5px] font-medium text-ink-muted">SOAL {i + 1} · {q.tipe.toUpperCase()} · {q.bobot} poin</p>
             <p className="text-[14.5px] font-medium mt-1">{q.teks}</p>
+            {q.gambar?.length ? (
+              <div className="flex flex-wrap gap-2 mt-2">
+                {q.gambar.map((g, gi) => (
+                  <a key={`${g.url}-${gi}`} href={g.url} target="_blank" rel="noreferrer">
+                    <img src={g.url} alt={g.name || "Foto soal"} className="max-h-52 rounded-lg border border-line object-contain bg-white" />
+                  </a>
+                ))}
+              </div>
+            ) : null}
             {q.tipe === "pg" ? (
               <div className="mt-3 space-y-1.5">
                 {q.opsi?.map((op) => (
@@ -129,11 +149,24 @@ function Work() {
           </div>
         ))}
         <div className="flex gap-2">
-          <button className="btn-primary" disabled={busy} onClick={submit}>{busy ? "Menilai…" : already ? "Kumpulkan ulang" : "Kumpulkan jawaban"}</button>
-          <button className="btn-ghost" onClick={() => router.push("/tugas")}>Simpan & keluar</button>
+          <button className="btn-primary" disabled={busy} onClick={() => setAsk(true)}>{busy ? "Menilai…" : already ? "Kumpulkan ulang" : "Kumpulkan jawaban"}</button>
+          <button className="btn-ghost" onClick={() => router.push(backHref)}>Simpan & keluar</button>
         </div>
         <p className="muted">Pilihan ganda dinilai otomatis. Uraian & essay dibantu AI lalu diverifikasi guru.</p>
       </div>
+
+      <Modal open={ask} onClose={() => setAsk(false)} title="Yakin mengumpulkan?">
+        <p className="text-[14.5px]">Jawaban akan dikirim ke guru{already ? " — kiriman sebelumnya akan ditimpa" : ""}.</p>
+        <p className="muted mt-2">Periksa kembali semua jawaban dan foto sebelum mengirim. Setelah dikumpulkan, jawaban tidak dapat diubah lagi.</p>
+        <div className="mt-4 flex gap-2">
+          <button
+            className="btn-primary flex-1"
+            disabled={busy}
+            onClick={() => { setAsk(false); void submit(); }}
+          >{busy ? "Menilai…" : "Ya, kumpulkan"}</button>
+          <button className="btn-ghost" onClick={() => setAsk(false)}>Batal</button>
+        </div>
+      </Modal>
 
       <Modal open={!!result} onClose={() => { setResult(null); router.push("/nilai"); }} title="Hasil penilaian sementara">
         <p className="text-[44px] font-bold tracking-tight">{result?.nilai}</p>

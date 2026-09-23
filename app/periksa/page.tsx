@@ -108,17 +108,47 @@ function Content() {
               <div key={q.id} className="rounded-xl border border-line p-3.5">
                 <p className="text-[12.5px] text-ink-muted font-medium">SOAL {i + 1} · {q.tipe.toUpperCase()} · bobot {q.bobot}</p>
                 <p className="text-[14px] font-medium mt-0.5">{q.teks}</p>
+                {q.gambar?.length ? (
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {q.gambar.map((g, gi) => (
+                      <a key={`${g.url}-${gi}`} href={g.url} target="_blank" rel="noreferrer" title={g.name}>
+                        <img src={g.url} alt={g.name || "Foto soal"} className="max-h-44 rounded-lg border border-line object-contain bg-white" />
+                      </a>
+                    ))}
+                  </div>
+                ) : null}
                 {q.kunci ? <p className="text-[12.5px] text-ink-muted mt-1">Kunci: {q.kunci}{q.rubrik ? ` · Rubrik: ${q.rubrik}` : ""}</p> : null}
                 <p className="text-[13.5px] mt-2 bg-wash border border-line rounded-lg px-3 py-2 whitespace-pre-wrap">{current.jawaban[q.id] || "(kosong)"}</p>
                 {current.jawabanLampiran?.[q.id]?.length ? (
                   <div className="mt-2">
                     <p className="text-[12px] text-ink-muted mb-1.5">Foto jawaban siswa</p>
-                    <div className="flex flex-wrap gap-2">
-                      {current.jawabanLampiran[q.id].map((file, index) => (
-                        <a key={`${file.url}-${index}`} href={file.url} target="_blank" rel="noreferrer" title={file.name}>
-                          <img src={file.url} alt={file.name || "Foto jawaban siswa"} className="h-20 w-20 rounded-lg border border-line object-cover hover:border-primary-300" />
-                        </a>
-                      ))}
+                    <div className="flex flex-wrap gap-3">
+                      {current.jawabanLampiran[q.id].map((file, index) => {
+                        const deg = current.fotoRotasi?.[file.url] ?? 0;
+                        const rotate = (next: number) => {
+                          if (!current) return;
+                          updateSubmission(current.id, {
+                            fotoRotasi: { ...(current.fotoRotasi || {}), [file.url]: ((next % 360) + 360) % 360 },
+                          });
+                        };
+                        return (
+                          <div key={`${file.url}-${index}`} className="w-24">
+                            <a href={file.url} target="_blank" rel="noreferrer" title={`${file.name} — klik untuk membuka ukuran penuh`} className="block">
+                              <img
+                                src={file.url}
+                                alt={file.name || "Foto jawaban siswa"}
+                                className="h-24 w-24 rounded-lg border border-line bg-white object-contain transition-transform"
+                                style={{ transform: `rotate(${deg}deg)` }}
+                              />
+                            </a>
+                            <div className="flex justify-center gap-1 mt-1">
+                              <button type="button" aria-label="Putar kiri" title="Putar kiri" className="h-6 w-6 rounded border border-line bg-white text-[13px] text-ink-muted hover:border-primary-300 hover:text-primary" onClick={() => rotate(deg - 90)}>⟲</button>
+                              <button type="button" aria-label="Putar kanan" title="Putar kanan" className="h-6 w-6 rounded border border-line bg-white text-[13px] text-ink-muted hover:border-primary-300 hover:text-primary" onClick={() => rotate(deg + 90)}>⟳</button>
+                              <span className="h-6 px-1.5 inline-flex items-center text-[11px] text-ink-faint tabular-nums">{((deg % 360) + 360) % 360}°</span>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 ) : null}

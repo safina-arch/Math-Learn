@@ -102,6 +102,13 @@ create table if not exists academic_events (
   deskripsi text default ''
 );
 
+-- State aplikasi bersama. Diakses hanya oleh API server menggunakan service role.
+create table if not exists app_state (
+  key text primary key check (key in ('materials','assignments','submissions','announcements','notifications','cheatLogs','events')),
+  data jsonb not null default '[]'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
 -- Realtime untuk notifikasi + laporan kecurangan
 alter publication supabase_realtime add table notifications;
 alter publication supabase_realtime add table cheat_logs;
@@ -117,6 +124,7 @@ alter table cheat_logs enable row level security;
 alter table announcements enable row level security;
 alter table notifications enable row level security;
 alter table academic_events enable row level security;
+alter table app_state enable row level security;
 
 create policy "read_all_demo" on materials for select using (true);
 create policy "read_all_demo" on assignments for select using (true);

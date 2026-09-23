@@ -14,14 +14,15 @@ Tanpa `.env`, aplikasi memakai data lokal (localStorage) + AI heuristik.
 ## 2. Supabase untuk produksi
 1. Buat project di supabase.com → salin **Project URL** + **anon key** (+ **service_role** opsional).
 2. Buka SQL Editor → jalankan `supabase/schema.sql`.
-3. Buat 3 user di Authentication, lalu insert ke `profiles` dengan id yang sama:
+3. Jalankan juga `supabase/migration-revisi.sql` (key `users`/`presence` di `app_state`, tabel kehadiran, bucket `materi` public).
+4. Buat 3 user di Authentication, lalu insert ke `profiles` dengan id yang sama:
 ```sql
 insert into profiles (id, nama, email, role, kelas) values
  ('<uuid-siswa>','Aisyah Putri','siswa@demo.id','siswa','VIII-A'),
  ('<uuid-guru>','Ibu Ratna','guru@demo.id','guru','VIII'),
  ('<uuid-admin>','Admin','admin@demo.id','admin','-');
 ```
-4. (Opsional) Aktifkan Storage bucket `materi` untuk file PDF guru.
+5. (Opsional) Aktifkan Storage bucket `materi` untuk file PDF guru.
 
 ## 3. Gemini AI (opsional)
 1. Ambil key di Google AI Studio.
@@ -46,7 +47,9 @@ Build command default `npm run build`. Region `sin1` sudah diset di `vercel.json
 | Lokal/demo (`npm run dev`, tanpa env) | Browser `localStorage` | Folder **`public/uploads/`** di laptop, disajikan via `/api/files/...` (maks 10 MB, PDF/PNG/JPG/WebP) |
 | Produksi + Supabase | Tabel Postgres | Bucket Storage `materi` (otomatis bila env Supabase diisi; buat bucket `materi` public di dashboard Supabase) |
 
-Catatan: di Vercel, file lokal tidak persisten (filesystem ephemeral) — untuk produksi wajib isi env Supabase + bucket `materi`.
+Catatan:
+- di Vercel, file lokal tidak persisten (filesystem read-only/ephemeral) — **upload akan menolak dengan pesan jelas** jika env Supabase belum diisi. Untuk produksi wajib isi env Supabase + jalankan `supabase/migration-revisi.sql`.
+- Menu lama berubah: **Tugas → LKPD (`/lkpd`) + Latihan (`/latihan`)**, menu **Kelola dihapus** (kelolaan ada di tiap halaman Materi/LKPD/Latihan/Evaluasi untuk guru & admin).
 
 ## 6. Checklist PRD
 - [x] Dashboard siswa/guru/admin + progres + tenggat + pengumuman
