@@ -6,7 +6,7 @@ import { AppShell, Guard } from "@/components/shell";
 import { Badge, PageHeader, Stat } from "@/components/ui";
 import { UserModal } from "@/components/user-modal";
 import { useStore } from "@/lib/store";
-import { fmtDateTime, nowIso, uid } from "@/lib/utils";
+import { fmtDateTime } from "@/lib/utils";
 import type { Role, User } from "@/lib/types";
 
 type AccountInput = User & { password?: string };
@@ -25,14 +25,11 @@ export default function AdminPage() {
 }
 
 function Content() {
-  const { users, presence, upsertUser, deleteUser, impersonate, events, upsertEvent, deleteEvent, submissions, assignments, addNotification } = useStore();
+  const { users, presence, upsertUser, deleteUser, impersonate, events, submissions, assignments, addNotification } = useStore();
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("siswa");
   const [uOpen, setUOpen] = useState(false);
   const [editU, setEditU] = useState<AccountInput | null>(null);
-  const [evJudul, setEvJudul] = useState("");
-  const [evTanggal, setEvTanggal] = useState("");
-  const [evDeskripsi, setEvDeskripsi] = useState("");
 
   const role: Role = tab;
   const list = users.filter((u) => u.role === role);
@@ -53,7 +50,7 @@ function Content() {
     <div className="page-wrap !px-0 !pb-0 !max-w-none">
       <PageHeader
         title="Administrasi"
-        desc="Manajemen siswa & guru terpisah, kehadiran pengguna, statistik global, dan kalender akademik."
+        desc="Manajemen siswa & guru terpisah, kehadiran pengguna, statistik global, dan akses jadwal/kalender akademik."
         right={<button className="btn-primary text-[13px]" onClick={() => { setEditU(null); setUOpen(true); }}>{`+ Tambah ${tab}`}</button>}
       />
       <div className="grid sm:grid-cols-4 gap-3 mb-3">
@@ -131,30 +128,19 @@ function Content() {
           </div>
 
           <div className="card card-pad">
-            <p className="h2 mb-2">Kalender akademik</p>
-            <div className="space-y-2 mb-3">
-              {events.map((e) => (
-                <div key={e.id} className="flex gap-2 items-start text-[13px]">
+            <p className="h2 mb-2">Jadwal &amp; kalender akademik</p>
+            <p className="muted mb-2">Atur jadwal mata pelajaran (hari &amp; jam), agenda UTS/UAS, libur, dan hari penting di halaman khusus — tampil langsung untuk siswa &amp; guru.</p>
+            <div className="space-y-1.5 mb-3">
+              <p className="text-[13px] font-semibold">Agenda terdekat</p>
+              {events.filter((e) => e.jenis !== "jadwal").slice(0, 4).map((e) => (
+                <div key={e.id} className="flex gap-2 items-baseline text-[13px]">
                   <span className="badge bg-wash text-ink-soft border-line shrink-0">{e.tanggal}</span>
-                  <div className="flex-1"><b>{e.judul}</b><p className="text-ink-muted">{e.deskripsi}</p></div>
-                  <button className="text-red-600" onClick={() => deleteEvent(e.id)}>×</button>
+                  <span className="min-w-0 flex-1 truncate">{e.judul}</span>
                 </div>
               ))}
+              {events.filter((e) => e.jenis !== "jadwal").length === 0 ? <p className="muted">Belum ada agenda.</p> : null}
             </div>
-            <div className="space-y-2">
-              <input className="input" value={evJudul} onChange={(e) => setEvJudul(e.target.value)} placeholder="Judul agenda" />
-              <input type="date" className="input" value={evTanggal} onChange={(e) => setEvTanggal(e.target.value)} />
-              <input className="input" value={evDeskripsi} onChange={(e) => setEvDeskripsi(e.target.value)} placeholder="Deskripsi" />
-              <button
-                className="btn-ghost w-full text-[13px]"
-                onClick={() => {
-                  if (!evJudul.trim() || !evTanggal) return;
-                  upsertEvent({ id: uid("e"), judul: evJudul.trim(), tanggal: evTanggal, deskripsi: evDeskripsi.trim() || "-" });
-                  setEvJudul(""); setEvTanggal(""); setEvDeskripsi("");
-                  void nowIso;
-                }}
-              >Tambah agenda</button>
-            </div>
+            <button className="btn-primary w-full text-[13px]" onClick={() => router.push("/jadwal")}>Kelola jadwal &amp; kalender</button>
           </div>
           <div className="card card-pad">
             <p className="h2">Impersonation</p>

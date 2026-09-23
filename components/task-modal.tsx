@@ -86,7 +86,7 @@ export function TaskModal({
                 <input type="number" className="input !w-[76px] !py-1" value={q.bobot} onChange={(e) => patchQ(q.id, { bobot: Number(e.target.value) || 0 })} title="bobot" />
                 <button className="text-red-600 text-[12.5px]" onClick={() => setQs((all) => all.filter((x) => x.id !== q.id))}>Hapus</button>
               </div>
-              <input className="input" value={q.teks} onChange={(e) => patchQ(q.id, { teks: e.target.value })} placeholder="Teks soal…" />
+              <textarea className="input min-h-[68px]" value={q.teks} onChange={(e) => patchQ(q.id, { teks: e.target.value })} placeholder="Teks soal… (Enter untuk baris baru)" />
               <QuestionImageUpload attachments={q.gambar || []} onChange={(files) => patchQ(q.id, { gambar: files })} label="Foto soal" />
               {q.tipe === "pg" ? (
                 <div className="grid sm:grid-cols-2 gap-1.5">

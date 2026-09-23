@@ -11,8 +11,8 @@ export async function POST(req: Request) {
         evaluation_id: body.evaluationId || null,
         siswa_id: body.siswaId || null,
         siswa_nama: body.siswaNama || null,
-        tipe: body.tipe || "visibility",
-        meta: { count: body.count ?? 1, soal: body.soal ?? null },
+        tipe: body.tipe === "foto" || body.tipe === "blur" || body.tipe === "visibility" ? body.tipe : "visibility",
+        meta: { count: body.count ?? 1, soal: body.soal ?? null, menit: body.menit ?? null },
       });
     }
     return NextResponse.json({ ok: true });

@@ -36,7 +36,12 @@ function Exam() {
   const [busy, setBusy] = useState(false);
   const [activeQuestion, setActiveQuestion] = useState(1);
   const cheatRef = useRef(0);
+  const photoRef = useRef(0);
   const lastCheatAt = useRef(0);
+  /** Waktu mulai ujian — dipakai menghitung menit kejadian untuk laporan. */
+  const startedAt = useRef(0);
+  /** Saat dialog file terbuka browser kehilangan fokus; jangan dicatat sebagai pelanggaran. */
+  const photoGrace = useRef(0);
   const doneRef = useRef(false);
 
   const ordered = useMemo(() => {
@@ -84,6 +89,9 @@ function Exam() {
         submittedAt: nowIso(), cheatCount: cheatRef.current,
       });
       addNotification({ userId: "all-guru", kategori: "evaluasi", judul: `${user.nama} menyelesaikan ${a.judul}`, isi: `Skor sementara ${total}${cheatRef.current ? ` · ${cheatRef.current}x pindah tab` : ""}.` });
+      if (photoRef.current > 0) {
+        addNotification({ userId: "all-guru", kategori: "lampiran", judul: `${user.nama} menambahkan foto jawaban`, isi: `${photoRef.current} foto ditambahkan pada ${a.judul} (bukan pelanggaran).` });
+      }
       if (cheatRef.current > 0) {
         addNotification({ userId: "all-guru", kategori: "kecurangan", judul: `Laporan kecurangan: ${user.nama}`, isi: `${cheatRef.current} pelanggaran pindah tab pada ${a.judul}.` });
       }
@@ -114,12 +122,15 @@ function Exam() {
     function registerCheat(tipe: "blur" | "visibility") {
       if (doneRef.current || !user) return;
       const now = Date.now();
+      // Mengunggah foto membuka dialog file — bukan pelanggaran.
+      if (now < photoGrace.current) return;
       // Browser biasanya memicu blur dan visibilitychange untuk satu perpindahan tab.
       if (now - lastCheatAt.current < 1000) return;
       lastCheatAt.current = now;
       cheatRef.current += 1;
-      addCheatLog({ evaluationId, siswaId: user.id, siswaNama: user.nama, tipe, soal: activeQuestion });
-      void fetch("/api/cheat-log", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ evaluationId, siswaId: user.id, siswaNama: user.nama, tipe, count: cheatRef.current, soal: activeQuestion }) });
+      const menit = Math.max(1, Math.round((now - (startedAt.current || now)) / 60000));
+      addCheatLog({ evaluationId, siswaId: user.id, siswaNama: user.nama, tipe, soal: activeQuestion, menit });
+      void fetch("/api/cheat-log", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ evaluationId, siswaId: user.id, siswaNama: user.nama, tipe, count: cheatRef.current, soal: activeQuestion, menit }) });
       setWarn({ count: cheatRef.current });
     }
     const onHide = () => { if (document.hidden) registerCheat("visibility"); };
@@ -157,7 +168,7 @@ function Exam() {
             <li>Pindah tab tercatat dan dilaporkan ke guru.</li>
           </ul>
           <div className="mt-5 flex gap-2">
-            <button className="btn-primary !px-5" onClick={() => { setLeft((a.durasiMenit || 45) * 60); setStarted(true); }}>Mulai kerjakan</button>
+            <button className="btn-primary !px-5" onClick={() => { startedAt.current = Date.now(); setLeft((a.durasiMenit || 45) * 60); setStarted(true); }}>Mulai kerjakan</button>
             <Link href="/evaluasi" className="btn-ghost">Nanti saja</Link>
           </div>
         </div>
@@ -173,7 +184,9 @@ function Exam() {
         <div className={`card card-pad !py-3 flex items-center gap-3 ${danger ? "!border-red-300 !bg-red-50/70" : ""}`}>
           <div className="min-w-0 flex-1">
             <p className="text-[13px] font-semibold truncate">{a.judul}</p>
-            <p className="text-[12px] text-ink-muted">Pelanggaran pindah tab: <b className={cheatRef.current ? "text-red-600" : ""}>{warn?.count ?? 0}x</b></p>
+            {user?.role !== "siswa" ? (
+              <p className="text-[12px] text-ink-muted">Pelanggaran pindah tab: <b className={cheatRef.current ? "text-red-600" : ""}>{warn?.count ?? 0}x</b></p>
+            ) : null}
           </div>
           <span className={`font-mono font-bold text-[20px] tabular-nums ${danger ? "text-red-600" : "text-ink"}`}>{fmtCountdown(left)}</span>
           <button className="btn-primary !py-2 text-[13px]" disabled={busy} onClick={() => setAsk(true)}>{busy ? "Mengumpulkan…" : "Kumpulkan"}</button>
@@ -219,7 +232,21 @@ function Exam() {
             ) : (
               <textarea className="input mt-3 min-h-[110px]" value={answers[q.id] || ""} onChange={(e) => setAnswers((p) => ({ ...p, [q.id]: e.target.value }))} placeholder="Tulis jawabanmu di sini…" />
             )}
-            <AnswerUpload attachments={answerAttachments[q.id] || []} onChange={(files) => setAnswerAttachments((current) => ({ ...current, [q.id]: files }))} />
+            <AnswerUpload
+              attachments={answerAttachments[q.id] || []}
+              onActivity={() => { photoGrace.current = Date.now() + 15000; }}
+              onChange={(files) => {
+                const prev = answerAttachments[q.id] || [];
+                setAnswerAttachments((current) => ({ ...current, [q.id]: files }));
+                if (files.length > prev.length && !doneRef.current && user) {
+                  // Menambahkan foto dicatat sebagai aktivitas, bukan kecurangan.
+                  photoRef.current += files.length - prev.length;
+                  const menit = Math.max(1, Math.round((Date.now() - (startedAt.current || Date.now())) / 60000));
+                  addCheatLog({ evaluationId: a.id, siswaId: user.id, siswaNama: user.nama, tipe: "foto", soal: i + 1, menit });
+                  void fetch("/api/cheat-log", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ evaluationId: a.id, siswaId: user.id, siswaNama: user.nama, tipe: "foto", count: 0, soal: i + 1, menit }) });
+                }
+              }}
+            />
           </div>
         ))}
       </div>

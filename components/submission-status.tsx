@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Badge, Modal } from "@/components/ui";
 import { useStore } from "@/lib/store";
-import { fmtDateTime } from "@/lib/utils";
+import { fmtDateTime, STATUS_TUGAS_META, statusTugas } from "@/lib/utils";
 import type { Assignment } from "@/lib/types";
 
 /**
@@ -28,6 +28,13 @@ export function SubmissionStatus({ assignment }: { assignment: Assignment }) {
   ];
   const total = Math.max(roster.length, submittedIds.size);
   const submittedCount = submittedIds.size;
+  const ringkas = { belum: 0, blm: 0, sdh: 0 };
+  rows.forEach((r) => {
+    const st = statusTugas(r.sub);
+    if (st === "belum") ringkas.belum += 1;
+    else if (st === "belum-diperiksa") ringkas.blm += 1;
+    else ringkas.sdh += 1;
+  });
 
   return (
     <>
@@ -40,6 +47,7 @@ export function SubmissionStatus({ assignment }: { assignment: Assignment }) {
         {submittedCount}/{total} mengumpulkan
       </button>
       <Modal open={open} onClose={() => setOpen(false)} title={`Pengumpul — ${assignment.judul}`} wide>
+        <p className="text-[12.5px] text-ink-muted mb-2">{ringkas.belum} belum mengerjakan · {ringkas.blm} belum diperiksa · {ringkas.sdh} sudah diperiksa</p>
         <div className="space-y-1.5">
           {rows.length === 0 ? <p className="muted">Belum ada daftar siswa untuk kelas {assignment.kelas}.</p> : rows.map((r) => (
             <div key={r.id} className="flex items-center gap-3 rounded-lg border border-line px-3 py-2">
@@ -52,14 +60,16 @@ export function SubmissionStatus({ assignment }: { assignment: Assignment }) {
                 <p className="text-[13.5px] font-medium truncate">{r.nama}</p>
                 <p className="text-[12px] text-ink-faint">{r.kelas}{r.nisn ? ` · NISN ${r.nisn}` : ""}</p>
               </div>
-              {r.sub ? (
-                <div className="text-right shrink-0">
-                  <Badge tone={r.sub.status === "dinilai" ? "green" : "purple"}>Sudah · {r.sub.nilai ?? "—"}</Badge>
-                  <p className="text-[11.5px] text-ink-faint mt-0.5">{fmtDateTime(r.sub.submittedAt)}</p>
-                </div>
-              ) : (
-                <Badge tone="amber">Belum</Badge>
-              )}
+              {(() => {
+                const st = statusTugas(r.sub);
+                const meta = STATUS_TUGAS_META[st];
+                return (
+                  <div className="text-right shrink-0">
+                    <Badge tone={meta.tone}>{meta.label}{st === "sudah" && r.sub?.nilai != null ? ` · ${r.sub.nilai}` : ""}</Badge>
+                    {r.sub ? <p className="text-[11.5px] text-ink-faint mt-0.5">{fmtDateTime(r.sub.submittedAt)}</p> : null}
+                  </div>
+                );
+              })()}
             </div>
           ))}
         </div>

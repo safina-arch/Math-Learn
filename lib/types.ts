@@ -111,15 +111,28 @@ export interface CheatLog {
   siswaId: string;
   siswaNama: string;
   timestamp: string;
-  tipe: "blur" | "visibility";
+  /** "blur"/"visibility" = pelanggaran; "foto" = menambahkan foto (bukan kecurangan). */
+  tipe: "blur" | "visibility" | "foto";
   soal?: number;
+  /** Menit ke-N sejak evaluasi dimulai. */
+  menit?: number;
 }
 
 export interface AcademicEvent {
   id: string;
   judul: string;
+  /** YYYY-MM-DD untuk agenda; kosong ("") untuk jadwal pelajaran. */
   tanggal: string;
   deskripsi: string;
+  /** "agenda" (kalender akademik) atau "jadwal" (jadwal pelajaran mingguan). Data lama tanpa jenis dianggap agenda. */
+  jenis?: "agenda" | "jadwal";
+  /** Hanya untuk jadwal: hari (Senin–Minggu). */
+  hari?: string;
+  /** Hanya untuk jadwal: jam mulai–selesai (HH:MM). */
+  jamMulai?: string;
+  jamSelesai?: string;
+  /** Kategori agenda: UTS | UAS | Libur | Hari Penting | Kegiatan. */
+  kategori?: string;
 }
 
 export interface Presence {

@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import { AppShell, Guard } from "@/components/shell";
-import { Badge, Empty, Modal, PageHeader } from "@/components/ui";
+import { Badge, Empty, Modal, PageHeader, Stat } from "@/components/ui";
 import { useStore } from "@/lib/store";
-import { fmtDateTime } from "@/lib/utils";
+import { cheatLabel, cheatTone, fmtDateTime, STATUS_TUGAS_META, statusRingkasan, statusTugas } from "@/lib/utils";
 
 export default function PeriksaPage() {
   return (
@@ -17,14 +17,26 @@ export default function PeriksaPage() {
 }
 
 function Content() {
-  const { submissions, assignments, updateSubmission, addNotification, cheatLogs } = useStore();
+  const { submissions, assignments, users, updateSubmission, addNotification, cheatLogs } = useStore();
   const [openId, setOpenId] = useState<string | null>(null);
   const [nilai, setNilai] = useState("");
   const [catatan, setCatatan] = useState("");
   const [aiEdits, setAiEdits] = useState<Record<string, { skor: number; feedback: string }>>({});
+  const [cheatSiswa, setCheatSiswa] = useState<string | null>(null);
 
   const current = submissions.find((s) => s.id === openId);
   const currentAssign = current ? assignments.find((a) => a.id === current.assignmentId) : null;
+  const ringkas = statusRingkasan(assignments, submissions, users);
+
+  // Kelompokkan laporan kecurangan per peserta (foto = menambahkan foto, bukan pelanggaran).
+  const cheatBySiswa = new Map<string, { nama: string; logs: typeof cheatLogs }>();
+  for (const c of cheatLogs) {
+    const g = cheatBySiswa.get(c.siswaId) || { nama: c.siswaNama, logs: [] as typeof cheatLogs };
+    g.logs.push(c);
+    cheatBySiswa.set(c.siswaId, g);
+  }
+  const pesertaCheat = Array.from(cheatBySiswa.entries());
+  const detailCheat = cheatSiswa ? cheatBySiswa.get(cheatSiswa) : undefined;
 
   function open(sid: string) {
     const s = submissions.find((x) => x.id === sid);
@@ -41,9 +53,10 @@ function Content() {
     if (!current) return;
     const patchedAi: typeof current.feedbackAi = { ...current.feedbackAi };
     Object.entries(aiEdits).forEach(([k, v]) => {
-      if (patchedAi[k]) patchedAi[k] = { ...patchedAi[k], skor: v.skor, feedback: v.feedback, draft: false };
+      // Batas nilai per soal dan nilai akhir: 0–100.
+      if (patchedAi[k]) patchedAi[k] = { ...patchedAi[k], skor: Math.min(100, Math.max(0, Math.round(v.skor) || 0)), feedback: v.feedback, draft: false };
     });
-    const n = nilai === "" ? current.nilai : Math.min(100, Math.max(0, Number(nilai) || 0));
+    const n = nilai === "" ? current.nilai : Math.min(100, Math.max(0, Math.round(Number(nilai) || 0)));
     updateSubmission(current.id, { nilai: n, feedbackGuru: catatan, feedbackAi: patchedAi, status: "dinilai" });
     addNotification({ userId: current.siswaId, kategori: "nilai", judul: "Hasil evaluasi telah dinilai", isi: `${currentAssign?.judul}: nilai ${n}. ${catatan.slice(0, 100)}` });
     setOpenId(null);
@@ -56,6 +69,11 @@ function Content() {
         desc="Setujui draf AI, sunting umpan balik, atau override nilai sebelum diterbitkan ke siswa."
         right={<a href="/api/export/nilai" className="btn-ghost text-[13px]">Ekspor CSV</a>}
       />
+      <div className="grid sm:grid-cols-3 gap-3 mb-3">
+        <Stat label="Belum mengerjakan" value={String(ringkas.belum)} sub="siswa × tugas tanpa kiriman" />
+        <Stat label="Belum diperiksa" value={String(ringkas.blm)} sub="kiriman menunggu pemeriksaan" />
+        <Stat label="Sudah diperiksa" value={String(ringkas.sudah)} sub="nilai sudah diterbitkan" />
+      </div>
       {submissions.length === 0 ? <Empty title="Belum ada kiriman" desc="Kiriman siswa dari LKPD, latihan, dan evaluasi akan muncul di sini." /> : (
         <div className="card overflow-hidden">
           <div className="overflow-x-auto">
@@ -64,11 +82,12 @@ function Content() {
               <tbody>
                 {submissions.map((s) => {
                   const a = assignments.find((x) => x.id === s.assignmentId);
+                  const meta = STATUS_TUGAS_META[statusTugas(s)];
                   return (
                     <tr key={s.id} className="table-row">
                       <td className="px-4 py-2.5"><b>{s.siswaNama}</b><span className="block text-[12px] text-ink-muted">{s.kelas}{s.cheatCount ? ` · ${s.cheatCount}x tab` : ""}</span></td>
                       <td className="px-4 py-2.5">{a?.judul}</td>
-                      <td className="px-4 py-2.5"><Badge tone={s.status === "dinilai" ? "green" : s.status === "draf-ai" ? "purple" : "amber"}>{s.status}</Badge></td>
+                      <td className="px-4 py-2.5"><Badge tone={meta.tone}>{meta.label}</Badge></td>
                       <td className="px-4 py-2.5 font-semibold">{s.nilai ?? "—"}</td>
                       <td className="px-4 py-2.5 text-ink-muted">{fmtDateTime(s.submittedAt)}</td>
                       <td className="px-4 py-2.5 text-right"><button className="btn-ghost !py-1.5 !text-[12.5px]" onClick={() => open(s.id)}>Periksa</button></td>
@@ -83,23 +102,48 @@ function Content() {
 
       <div className="card overflow-hidden mt-3">
         <div className="px-4 py-3 border-b border-line">
-          <p className="h2">Laporan kecurangan ({cheatLogs.length})</p>
-          <p className="muted mt-0.5">Setiap perpindahan laman dihitung satu kali dan dikaitkan dengan soal yang sedang aktif.</p>
+          <p className="h2">Laporan kecurangan ({cheatLogs.length} kejadian · {pesertaCheat.length} peserta)</p>
+          <p className="muted mt-0.5">Klik nama peserta untuk melihat detail: jenis kecurangan, menit kejadian, dan nomor soal terindikasi.</p>
         </div>
-        {cheatLogs.length === 0 ? <p className="muted p-4">Belum ada pelanggaran.</p> : (
+        {pesertaCheat.length === 0 ? <p className="muted p-4">Belum ada pelanggaran.</p> : (
+          <div className="divide-y divide-line">
+            {pesertaCheat.map(([sid, g]) => (
+              <div key={sid} className="px-4 py-2.5 flex items-center gap-3">
+                <span className="h-8 w-8 rounded-full bg-wash border border-line flex items-center justify-center text-[12px] font-semibold text-ink-soft shrink-0">{g.nama.slice(0, 1).toUpperCase()}</span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[14px] font-medium truncate">{g.nama}</p>
+                  <p className="text-[12px] text-ink-muted">{g.logs.length} kejadian tercatat</p>
+                </div>
+                <button className="btn-ghost !py-1.5 !text-[12.5px]" onClick={() => setCheatSiswa(sid)}>Lihat detail</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <Modal open={!!detailCheat} onClose={() => setCheatSiswa(null)} title={`Detail kecurangan — ${detailCheat?.nama || ""}`} wide>
+        {detailCheat ? (
           <div className="overflow-x-auto">
-            <table className="w-full text-[13px] min-w-[620px]">
-              <thead><tr className="text-left text-[12px] text-ink-muted bg-wash/50"><th className="px-4 py-2.5 font-medium">Siswa</th><th className="px-4 py-2.5 font-medium">Evaluasi</th><th className="px-4 py-2.5 font-medium">Soal</th><th className="px-4 py-2.5 font-medium">Jenis</th><th className="px-4 py-2.5 font-medium">Waktu</th></tr></thead>
+            <table className="w-full text-[13px] min-w-[560px]">
+              <thead><tr className="text-left text-[12px] text-ink-muted bg-wash/50"><th className="px-3 py-2.5 font-medium">Jenis</th><th className="px-3 py-2.5 font-medium">Menit kejadian</th><th className="px-3 py-2.5 font-medium">Soal</th><th className="px-3 py-2.5 font-medium">Evaluasi</th><th className="px-3 py-2.5 font-medium">Waktu</th></tr></thead>
               <tbody>
-                {cheatLogs.slice(0, 50).map((c) => {
+                {detailCheat.logs.map((c) => {
                   const evaluation = assignments.find((a) => a.id === c.evaluationId);
-                  return <tr key={c.id} className="table-row"><td className="px-4 py-2.5 font-medium">{c.siswaNama}</td><td className="px-4 py-2.5">{evaluation?.judul || "Evaluasi"}</td><td className="px-4 py-2.5">{c.soal ? `Soal ${c.soal}` : "Tidak diketahui"}</td><td className="px-4 py-2.5"><Badge tone="red">{c.tipe === "visibility" ? "Pindah laman" : "Keluar fokus"}</Badge></td><td className="px-4 py-2.5 text-ink-muted">{fmtDateTime(c.timestamp)}</td></tr>;
+                  return (
+                    <tr key={c.id} className="table-row">
+                      <td className="px-3 py-2.5"><Badge tone={cheatTone(c.tipe)}>{cheatLabel(c.tipe)}</Badge></td>
+                      <td className="px-3 py-2.5 tabular-nums">{c.menit != null ? `Menit ke-${c.menit}` : "—"}</td>
+                      <td className="px-3 py-2.5">{c.soal ? `Soal ${c.soal}` : "—"}</td>
+                      <td className="px-3 py-2.5">{evaluation?.judul || "Evaluasi"}</td>
+                      <td className="px-3 py-2.5 text-ink-muted">{fmtDateTime(c.timestamp)}</td>
+                    </tr>
+                  );
                 })}
               </tbody>
             </table>
           </div>
-        )}
-      </div>
+        ) : null}
+      </Modal>
 
       <Modal open={!!current} onClose={() => setOpenId(null)} title={`Periksa — ${current?.siswaNama}`} wide>
         {current && currentAssign ? (
@@ -155,7 +199,7 @@ function Content() {
                 <div className="grid sm:grid-cols-[100px_1fr] gap-2 mt-2">
                   <div>
                     <div className="flex items-center justify-between"><label className="label">Persentase AI</label><span className="text-[12px] font-semibold text-primary">{aiEdits[q.id]?.skor ?? 0}%</span></div>
-                    <input type="number" min={0} max={100} className="input" value={aiEdits[q.id]?.skor ?? 0} onChange={(e) => setAiEdits((p) => ({ ...p, [q.id]: { skor: Number(e.target.value), feedback: p[q.id]?.feedback || "" } }))} />
+                    <input type="number" min={0} max={100} className="input" value={aiEdits[q.id]?.skor ?? 0} onChange={(e) => setAiEdits((p) => ({ ...p, [q.id]: { skor: Math.min(100, Math.max(0, Math.round(Number(e.target.value) || 0))), feedback: p[q.id]?.feedback || "" } }))} />
                     <div className="h-1.5 rounded-full bg-wash mt-1.5 overflow-hidden"><div className="h-full rounded-full bg-primary transition-all" style={{ width: `${Math.min(100, Math.max(0, aiEdits[q.id]?.skor ?? 0))}%` }} /></div>
                   </div>
                   <div><label className="label">Draf umpan balik (sunting bila perlu)</label><input className="input" value={aiEdits[q.id]?.feedback || ""} onChange={(e) => setAiEdits((p) => ({ ...p, [q.id]: { skor: p[q.id]?.skor || 0, feedback: e.target.value } }))} /></div>
@@ -163,7 +207,7 @@ function Content() {
               </div>
             ))}
             <div className="grid sm:grid-cols-2 gap-3">
-              <div><label className="label">Nilai akhir (override)</label><input type="number" min={0} max={100} className="input" value={nilai} onChange={(e) => setNilai(e.target.value)} placeholder="0–100" /></div>
+              <div><label className="label">Nilai akhir (override · maks. 100)</label><input type="number" min={0} max={100} className="input" value={nilai} onChange={(e) => setNilai(e.target.value === "" ? "" : String(Math.min(100, Math.max(0, Math.round(Number(e.target.value) || 0)))))} placeholder="0–100" /></div>
               <div><label className="label">Umpan balik akhir untuk siswa</label><input className="input" value={catatan} onChange={(e) => setCatatan(e.target.value)} placeholder="1–2 kalimat apresiasi + saran" /></div>
             </div>
             <div className="flex gap-2">

@@ -1,3 +1,5 @@
+import type { Assignment, Submission, User } from "./types";
+
 export function uid(prefix = "id"): string {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 }
@@ -70,4 +72,64 @@ export function toCsv(rows: (string | number)[][]): string {
   return rows
     .map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(","))
     .join("\n");
+}
+
+/** Format tanggal "YYYY-MM-DD" lokal tanpa bergantung zona waktu. */
+export function fmtTanggal(iso: string | null): string {
+  if (!iso) return "—";
+  const [y, m, d] = iso.split("-");
+  const bulan = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+  if (!y || !m || !d) return iso;
+  return `${Number(d)} ${bulan[Number(m) - 1] || m} ${y}`;
+}
+
+/** Label jenis kecurangan — "foto" adalah kegiatan menambahkan foto, bukan pelanggaran. */
+export function cheatLabel(tipe: string): string {
+  if (tipe === "foto") return "Menambahkan foto";
+  if (tipe === "visibility") return "Pindah laman";
+  return "Keluar fokus";
+}
+
+export function cheatTone(tipe: string): "red" | "blue" {
+  return tipe === "foto" ? "blue" : "red";
+}
+
+/** Status tugas siswa dari kacamata guru & admin. */
+export type StatusTugas = "belum" | "belum-diperiksa" | "sudah";
+export const STATUS_TUGAS_META: Record<StatusTugas, { label: string; tone: "gray" | "amber" | "green" }> = {
+  belum: { label: "Belum mengerjakan", tone: "gray" },
+  "belum-diperiksa": { label: "Belum diperiksa", tone: "amber" },
+  sudah: { label: "Sudah diperiksa", tone: "green" },
+};
+export function statusTugas(sub?: { status: string } | null): StatusTugas {
+  if (!sub) return "belum";
+  return sub.status === "dinilai" ? "sudah" : "belum-diperiksa";
+}
+
+/** Ringkasan tiga status tugas di seluruh tugas: belum mengerjakan / belum diperiksa / sudah diperiksa. */
+export function statusRingkasan(assignments: Assignment[], submissions: Submission[], users: User[]) {
+  let belum = 0;
+  let blm = 0;
+  let sudah = 0;
+  for (const a of assignments) {
+    const subs = submissions.filter((s) => s.assignmentId === a.id);
+    const ids = new Set(subs.map((s) => s.siswaId));
+    const roster = users.filter((u) => u.role === "siswa" && u.kelas === a.kelas);
+    belum += Math.max(0, Math.max(roster.length, ids.size) - ids.size);
+    for (const s of subs) {
+      if (s.status === "dinilai") sudah += 1;
+      else blm += 1;
+    }
+  }
+  return { belum, blm, sudah };
+}
+
+/** Kategori kalender akademik + warna badge-nya. */
+export const KATEGORI_AGENDA = ["UTS", "UAS", "Libur", "Hari Penting", "Kegiatan"] as const;
+export function kategoriTone(k?: string): "red" | "purple" | "green" | "amber" | "blue" {
+  if (k === "UTS") return "red";
+  if (k === "UAS") return "purple";
+  if (k === "Libur") return "green";
+  if (k === "Hari Penting") return "amber";
+  return "blue";
 }

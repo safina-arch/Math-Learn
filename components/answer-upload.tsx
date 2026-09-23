@@ -6,9 +6,12 @@ import type { MaterialAttachment } from "@/lib/types";
 export function AnswerUpload({
   attachments,
   onChange,
+  onActivity,
 }: {
   attachments: MaterialAttachment[];
   onChange: (files: MaterialAttachment[]) => void;
+  /** Dipanggil saat dialog foto dibuka — dipakai halaman evaluasi menahan deteksi pelanggaran. */
+  onActivity?: () => void;
 }) {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -42,7 +45,16 @@ export function AnswerUpload({
           <p className="text-[11.5px] text-ink-faint mt-0.5">JPG, PNG, atau WebP · maksimal 10 MB</p>
         </div>
         <label className={`btn-ghost !py-1.5 !px-2.5 !text-[12px] shrink-0 ${uploading ? "opacity-60 pointer-events-none" : "cursor-pointer"}`}>
-          <input type="file" multiple accept="image/png,image/jpeg,image/webp" className="hidden" disabled={uploading} onChange={(event) => { handleFiles(event.target.files); event.currentTarget.value = ""; }} />
+          <input
+            type="file"
+            multiple
+            accept="image/png,image/jpeg,image/webp"
+            className="hidden"
+            disabled={uploading}
+            onFocus={() => onActivity?.()}
+            onClick={() => onActivity?.()}
+            onChange={(event) => { onActivity?.(); handleFiles(event.target.files); event.currentTarget.value = ""; }}
+          />
           {uploading ? "Mengunggah…" : "+ Foto"}
         </label>
       </div>

@@ -65,4 +65,17 @@ export const SEED_ASSIGNMENTS: Assignment[] = [];
 
 export const SEED_ANNOUNCEMENTS: Announcement[] = [];
 
-export const SEED_EVENTS: AcademicEvent[] = [];
+export const SEED_EVENTS: AcademicEvent[] = [
+  // — Jadwal mata pelajaran mingguan (tampil untuk siswa, guru, admin) —
+  { id: "ev-jadwal-1", jenis: "jadwal", judul: "Matematika", hari: "Senin", jamMulai: "07:00", jamSelesai: "08:30", tanggal: "", deskripsi: "VIII-A · Ruang 12" },
+  { id: "ev-jadwal-2", jenis: "jadwal", judul: "Matematika", hari: "Selasa", jamMulai: "07:00", jamSelesai: "08:30", tanggal: "", deskripsi: "VIII-A · Ruang 12" },
+  { id: "ev-jadwal-3", jenis: "jadwal", judul: "Matematika", hari: "Rabu", jamMulai: "07:00", jamSelesai: "08:30", tanggal: "", deskripsi: "VIII-A · Ruang 12" },
+  { id: "ev-jadwal-4", jenis: "jadwal", judul: "Matematika", hari: "Kamis", jamMulai: "07:00", jamSelesai: "08:30", tanggal: "", deskripsi: "VIII-A · Ruang 12" },
+  { id: "ev-jadwal-5", jenis: "jadwal", judul: "Matematika", hari: "Jumat", jamMulai: "07:00", jamSelesai: "08:00", tanggal: "", deskripsi: "VIII-A · Ruang 12" },
+  { id: "ev-jadwal-6", jenis: "jadwal", judul: "Remedial & pengayaan", hari: "Jumat", jamMulai: "09:30", jamSelesai: "11:00", tanggal: "", deskripsi: "Ruang 12 · terbuka untuk semua siswa" },
+  // — Kalender akademik (agenda penting) —
+  { id: "ev-agenda-1", jenis: "agenda", kategori: "UTS", judul: "UTS Semester Ganjil", tanggal: "2026-10-12", deskripsi: "Dilaksanakan 12–17 Oktober 2026 untuk seluruh mata pelajaran." },
+  { id: "ev-agenda-2", jenis: "agenda", kategori: "Hari Penting", judul: "Hari Guru Nasional", tanggal: "2026-11-25", deskripsi: "Upacara di lapangan sekolah pukul 07.00 WIB." },
+  { id: "ev-agenda-3", jenis: "agenda", kategori: "Libur", judul: "Libur Semester", tanggal: "2026-12-21", deskripsi: "Libur semester berakhir 3 Januari 2027." },
+  { id: "ev-agenda-4", jenis: "agenda", kategori: "UAS", judul: "UAS Semester Ganjil", tanggal: "2027-01-11", deskripsi: "Dilaksanakan 11–16 Januari 2027." },
+];
