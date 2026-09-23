@@ -1,10 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { AppShell, Guard } from "@/components/shell";
 import { Badge, Empty, Modal, PageHeader, Stat } from "@/components/ui";
 import { useStore } from "@/lib/store";
-import { cheatLabel, cheatTone, fmtDateTime, STATUS_TUGAS_META, statusRingkasan, statusTugas } from "@/lib/utils";
+import { cheatLabel, cheatTone, fmtDateTime, STATUS_TUGAS_META, statusRingkasan, statusTugas, TIPE_LABEL, TIPE_TONE, TIPEURUT } from "@/lib/utils";
+import type { AssignmentType } from "@/lib/types";
+
+type FilterTipe = "semua" | AssignmentType;
 
 export default function PeriksaPage() {
   return (
@@ -23,10 +26,23 @@ function Content() {
   const [catatan, setCatatan] = useState("");
   const [aiEdits, setAiEdits] = useState<Record<string, { skor: number; feedback: string }>>({});
   const [cheatSiswa, setCheatSiswa] = useState<string | null>(null);
+  const [filter, setFilter] = useState<FilterTipe>("semua");
 
   const current = submissions.find((s) => s.id === openId);
   const currentAssign = current ? assignments.find((a) => a.id === current.assignmentId) : null;
   const ringkas = statusRingkasan(assignments, submissions, users);
+
+  // Kiriman terkelompok per jenis tugas (latihan, LKPD, evaluasi), terbaru di tiap kelompok.
+  const tipeOf = (sid: string): AssignmentType => assignments.find((x) => x.id === sid)?.tipe || "latihan";
+  const urutKiriman = submissions
+    .filter((s) => filter === "semua" || tipeOf(s.assignmentId) === filter)
+    .slice()
+    .sort((a, b) => TIPEURUT[tipeOf(a.assignmentId)] - TIPEURUT[tipeOf(b.assignmentId)] || b.submittedAt.localeCompare(a.submittedAt));
+  const hitungTipe = (t: AssignmentType) => submissions.filter((s) => tipeOf(s.assignmentId) === t).length;
+  const chips: { key: FilterTipe; label: string }[] = [
+    { key: "semua", label: `Semua (${submissions.length})` },
+    ...(["latihan", "lkpd", "evaluasi"] as AssignmentType[]).map((t) => ({ key: t, label: `${TIPE_LABEL[t]} (${hitungTipe(t)})` })),
+  ];
 
   // Kelompokkan laporan kecurangan per peserta (foto = menambahkan foto, bukan pelanggaran).
   const cheatBySiswa = new Map<string, { nama: string; logs: typeof cheatLogs }>();
@@ -74,26 +90,49 @@ function Content() {
         <Stat label="Belum diperiksa" value={String(ringkas.blm)} sub="kiriman menunggu pemeriksaan" />
         <Stat label="Sudah diperiksa" value={String(ringkas.sudah)} sub="nilai sudah diterbitkan" />
       </div>
-      {submissions.length === 0 ? <Empty title="Belum ada kiriman" desc="Kiriman siswa dari LKPD, latihan, dan evaluasi akan muncul di sini." /> : (
+      <div className="flex flex-wrap gap-1.5 mb-3">
+        {chips.map((c) => (
+          <button
+            key={c.key}
+            className={`btn !py-1.5 !px-3 !text-[12.5px] ${filter === c.key ? "bg-ink text-white border border-ink" : "btn-ghost"}`}
+            onClick={() => setFilter(c.key)}
+          >{c.label}</button>
+        ))}
+      </div>
+      {submissions.length === 0 ? <Empty title="Belum ada kiriman" desc="Kiriman siswa dari LKPD, latihan, dan evaluasi akan muncul di sini." /> : urutKiriman.length === 0 ? (
+        <Empty title="Tidak ada kiriman pada jenis ini" desc="Pilih jenis tugas lain pada filter di atas." />
+      ) : (
         <div className="card overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-[13.5px] min-w-[640px]">
-              <thead><tr className="text-left text-[12px] text-ink-muted"><th className="px-4 py-2.5 font-medium">Siswa</th><th className="px-4 py-2.5 font-medium">Tugas</th><th className="px-4 py-2.5 font-medium">Status</th><th className="px-4 py-2.5 font-medium">Skor</th><th className="px-4 py-2.5 font-medium">Dikumpulkan</th><th className="px-4 py-2.5" /></tr></thead>
+            <table className="w-full text-[13.5px] min-w-[680px]">
+              <thead><tr className="text-left text-[12px] text-ink-muted bg-wash/50"><th className="px-4 py-2.5 font-medium">Siswa</th><th className="px-4 py-2.5 font-medium">Jenis</th><th className="px-4 py-2.5 font-medium">Tugas</th><th className="px-4 py-2.5 font-medium">Status</th><th className="px-4 py-2.5 font-medium">Skor</th><th className="px-4 py-2.5 font-medium">Dikumpulkan</th><th className="px-4 py-2.5" /></tr></thead>
               <tbody>
-                {submissions.map((s) => {
-                  const a = assignments.find((x) => x.id === s.assignmentId);
-                  const meta = STATUS_TUGAS_META[statusTugas(s)];
-                  return (
-                    <tr key={s.id} className="table-row">
-                      <td className="px-4 py-2.5"><b>{s.siswaNama}</b><span className="block text-[12px] text-ink-muted">{s.kelas}{s.cheatCount ? ` · ${s.cheatCount}x tab` : ""}</span></td>
-                      <td className="px-4 py-2.5">{a?.judul}</td>
-                      <td className="px-4 py-2.5"><Badge tone={meta.tone}>{meta.label}</Badge></td>
-                      <td className="px-4 py-2.5 font-semibold">{s.nilai ?? "—"}</td>
-                      <td className="px-4 py-2.5 text-ink-muted">{fmtDateTime(s.submittedAt)}</td>
-                      <td className="px-4 py-2.5 text-right"><button className="btn-ghost !py-1.5 !text-[12.5px]" onClick={() => open(s.id)}>Periksa</button></td>
-                    </tr>
-                  );
-                })}
+                {(() => {
+                  let lastTipe: AssignmentType | null = null;
+                  return urutKiriman.map((s) => {
+                    const a = assignments.find((x) => x.id === s.assignmentId);
+                    const tipe = tipeOf(s.assignmentId);
+                    const meta = STATUS_TUGAS_META[statusTugas(s)];
+                    const showHead = filter === "semua" && tipe !== lastTipe;
+                    lastTipe = tipe;
+                    return (
+                      <Fragment key={s.id}>
+                        {showHead ? (
+                          <tr><td colSpan={7} className="px-4 pt-3 pb-1 text-[12px] font-semibold uppercase tracking-wide text-ink-faint bg-wash/40">{TIPE_LABEL[tipe]}</td></tr>
+                        ) : null}
+                        <tr className="table-row">
+                          <td className="px-4 py-2.5"><b>{s.siswaNama}</b><span className="block text-[12px] text-ink-muted">{s.kelas}{s.cheatCount ? ` · ${s.cheatCount}x tab` : ""}</span></td>
+                          <td className="px-4 py-2.5"><Badge tone={TIPE_TONE[tipe]}>{TIPE_LABEL[tipe]}</Badge></td>
+                          <td className="px-4 py-2.5">{a?.judul || "—"}</td>
+                          <td className="px-4 py-2.5"><Badge tone={meta.tone}>{meta.label}</Badge></td>
+                          <td className="px-4 py-2.5 font-semibold">{s.nilai ?? "—"}</td>
+                          <td className="px-4 py-2.5 text-ink-muted">{fmtDateTime(s.submittedAt)}</td>
+                          <td className="px-4 py-2.5 text-right"><button className="btn-ghost !py-1.5 !text-[12.5px]" onClick={() => open(s.id)}>Periksa</button></td>
+                        </tr>
+                      </Fragment>
+                    );
+                  });
+                })()}
               </tbody>
             </table>
           </div>
@@ -151,7 +190,7 @@ function Content() {
             {currentAssign.questions.map((q, i) => (
               <div key={q.id} className="rounded-xl border border-line p-3.5">
                 <p className="text-[12.5px] text-ink-muted font-medium">SOAL {i + 1} · {q.tipe.toUpperCase()} · bobot {q.bobot}</p>
-                <p className="text-[14px] font-medium mt-0.5">{q.teks}</p>
+                <p className="text-[14px] font-medium mt-0.5 whitespace-pre-wrap">{q.teks}</p>
                 {q.gambar?.length ? (
                   <div className="flex flex-wrap gap-2 mt-2">
                     {q.gambar.map((g, gi) => (

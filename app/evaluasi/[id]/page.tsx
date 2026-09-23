@@ -12,7 +12,7 @@ import { fmtCountdown, heuristicGrade, nowIso, pgCorrect, uid } from "@/lib/util
 export default function ExamPage() {
   return (
     <AppShell>
-      <Guard allow={["siswa", "guru", "admin"]}>
+      <Guard allow={["siswa"]}>
         <Exam />
       </Guard>
     </AppShell>
@@ -21,9 +21,11 @@ export default function ExamPage() {
 
 function Exam() {
   const { id } = useParams() as { id: string };
-  const { assignments, addSubmission, addNotification, addCheatLog, user } = useStore();
+  const { assignments, submissions, addSubmission, addNotification, addCheatLog, user } = useStore();
   const router = useRouter();
   const a = assignments.find((x) => x.id === id);
+  /** Evaluasi dikerjakan satu kali: kiriman yang sudah ada menutup akses pengerjaan ulang. */
+  const already = user ? submissions.find((s) => s.assignmentId === id && s.siswaId === user.id) : null;
 
   const duration = (a?.durasiMenit || 45) * 60;
   const [answers, setAnswers] = useState<Record<string, string>>({});
@@ -35,6 +37,7 @@ function Exam() {
   const [done, setDone] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
   const [activeQuestion, setActiveQuestion] = useState(1);
+  const examKey = user ? `mathlearn-exam:${id}:${user.id}` : "";
   const cheatRef = useRef(0);
   const photoRef = useRef(0);
   const lastCheatAt = useRef(0);
@@ -60,6 +63,7 @@ function Exam() {
     if (!a || !user || doneRef.current || busy) return;
     doneRef.current = true;
     setBusy(true);
+    try { if (examKey) localStorage.removeItem(examKey); } catch {}
     try {
       let total = 0;
       const feedbackAi: Record<string, { skor: number; feedback: string; draft: boolean }> = {};
@@ -100,6 +104,25 @@ function Exam() {
       setBusy(false);
     }
   }, [a, answers, user, busy, addSubmission, addNotification, addCheatLog]);
+
+  // Resume timer: refresh/hilang fokus tidak me-reset waktu ujian.
+  useEffect(() => {
+    if (!examKey || already || started) return;
+    try {
+      const raw = localStorage.getItem(examKey);
+      if (!raw) return;
+      const s = JSON.parse(raw) as { startAt: number; endAt: number };
+      const leftSec = Math.round((s.endAt - Date.now()) / 1000);
+      if (leftSec > 0) {
+        startedAt.current = s.startAt;
+        setLeft(leftSec);
+        setStarted(true);
+      } else {
+        localStorage.removeItem(examKey);
+      }
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [examKey, already]);
 
   useEffect(() => {
     if (!started || done !== null) return;
@@ -145,14 +168,48 @@ function Exam() {
 
   if (!a) return <div className="page-wrap !px-0"><p className="muted">Evaluasi tidak ditemukan.</p></div>;
 
+  // Dikerjakan satu kali — kiriman yang sudah ada menutup pengerjaan ulang.
+  if (already && !started && done === null) {
+    return (
+      <div className="page-wrap !px-0 !pb-0 !max-w-none">
+        <Link href="/evaluasi" className="text-[13px] text-ink-muted hover:text-primary">← Semua evaluasi</Link>
+        <div className="card card-pad sm:p-7 mt-3 max-w-[680px]">
+          <Badge tone="green">SUDAH DIKERJAKAN</Badge>
+          <h1 className="h1 mt-2">{a.judul}</h1>
+          <p className="muted mt-1.5 whitespace-pre-wrap">{a.deskripsi}</p>
+          <p className="text-[14.5px] mt-4">Evaluasi ini hanya bisa dikerjakan <b>satu kali</b>. Jawabanmu sudah kami terima pada {new Date(already.submittedAt).toLocaleString("id-ID", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" })}.</p>
+          <div className="mt-5 flex gap-2">
+            <Link href="/nilai" className="btn-primary">Lihat nilai</Link>
+            <Link href="/evaluasi" className="btn-ghost">Kembali</Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (!started) {
+    // Dikunci admin: siswa hanya bisa melihat keterangan, tidak bisa mulai.
+    if (a.terkunci) {
+      return (
+        <div className="page-wrap !px-0 !pb-0 !max-w-none">
+          <Link href="/evaluasi" className="text-[13px] text-ink-muted hover:text-primary">← Semua evaluasi</Link>
+          <div className="card card-pad sm:p-7 mt-3 max-w-[680px]">
+            <Badge tone="red">TERKUNCI</Badge>
+            <h1 className="h1 mt-2">{a.judul}</h1>
+            <p className="muted mt-1.5 whitespace-pre-wrap">{a.deskripsi}</p>
+            <p className="text-[14.5px] mt-4">Evaluasi ini dikunci oleh admin dan belum dapat dikerjakan. Informasi penegasan waktu akan diumumkan guru.</p>
+            <Link href="/evaluasi" className="btn-ghost mt-5">Kembali</Link>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="page-wrap !px-0 !pb-0 !max-w-none">
         <Link href="/evaluasi" className="text-[13px] text-ink-muted hover:text-primary">← Semua evaluasi</Link>
         <div className="card card-pad sm:p-7 mt-3 max-w-[680px]">
           <Badge tone="red">EVALUASI · {a.durasiMenit} MENIT</Badge>
           <h1 className="h1 mt-2">{a.judul}</h1>
-          <p className="muted mt-1.5">{a.deskripsi}</p>
+          <p className="muted mt-1.5 whitespace-pre-wrap">{a.deskripsi}</p>
           {a.deskripsiGambar?.length ? (
             <div className="flex flex-wrap gap-2 mt-2">
               {a.deskripsiGambar.map((g, i) => (
@@ -163,12 +220,23 @@ function Exam() {
             </div>
           ) : null}
           <ul className="text-[13.5px] text-ink-soft list-disc pl-5 mt-3 space-y-1">
+            <li><b>Satu kesempatan</b> — evaluasi hanya bisa dikerjakan satu kali.</li>
             <li>{a.questions.length} soal · penguncian tab aktif.</li>
-            <li>Waktu habis = otomatis terkumpul.</li>
+            <li>Waktu habis = otomatis terkumpul. Muat ulang halaman tidak mereset timer.</li>
             <li>Pindah tab tercatat dan dilaporkan ke guru.</li>
           </ul>
           <div className="mt-5 flex gap-2">
-            <button className="btn-primary !px-5" onClick={() => { startedAt.current = Date.now(); setLeft((a.durasiMenit || 45) * 60); setStarted(true); }}>Mulai kerjakan</button>
+            <button
+              className="btn-primary !px-5"
+              onClick={() => {
+                const now = Date.now();
+                const endAt = now + (a.durasiMenit || 45) * 60000;
+                startedAt.current = now;
+                try { if (examKey) localStorage.setItem(examKey, JSON.stringify({ startAt: now, endAt })); } catch {}
+                setLeft((a.durasiMenit || 45) * 60);
+                setStarted(true);
+              }}
+            >Mulai kerjakan</button>
             <Link href="/evaluasi" className="btn-ghost">Nanti saja</Link>
           </div>
         </div>
@@ -210,7 +278,7 @@ function Exam() {
         {ordered.map((q, i) => (
           <div key={q.id} className="card card-pad" onFocusCapture={() => setActiveQuestion(i + 1)}>
             <p className="text-[12.5px] font-medium text-ink-muted">SOAL {i + 1} · {q.tipe.toUpperCase()} · {q.bobot} poin</p>
-            <p className="text-[14.5px] font-medium mt-1">{q.teks}</p>
+            <p className="text-[14.5px] font-medium mt-1 whitespace-pre-wrap">{q.teks}</p>
             {q.gambar?.length ? (
               <div className="flex flex-wrap gap-2 mt-2">
                 {q.gambar.map((g, gi) => (

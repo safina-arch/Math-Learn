@@ -111,7 +111,7 @@ export function TaskModal({
             kelas: initial?.kelas || "VIII-A",
             durasiMenit: tipe === "evaluasi" ? Number(durasi) || 45 : null,
             bukaAt: initial?.bukaAt || nowIso(), tutupAt: initial?.tutupAt || null,
-            acakSoal: tipe !== "lkpd", kunciTab: tipe === "evaluasi", createdBy: initial?.createdBy || author,
+            acakSoal: tipe !== "lkpd", kunciTab: tipe === "evaluasi", terkunci: initial?.terkunci, createdBy: initial?.createdBy || author,
             questions: qs.filter((q) => q.teks.trim() || (q.gambar && q.gambar.length)),
           }, !initial)}
         >Simpan & publikasikan</button>

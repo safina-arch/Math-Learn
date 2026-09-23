@@ -1,13 +1,32 @@
 # Plan Revisi Math-Learn — Status Eksekusi
 
 Tanggal: 23–24 Sep 2026 · Proyek: `mathlearn/` (Next.js 14 + Supabase + localStorage fallback)
-**Status: Gelombang 1 SELESAI & LIVE · Gelombang 2 (10 revisi) SELESAI — build lokal lulus, menunggu deploy**
+**Status: Gelombang 1 SELESAI & LIVE · Gelombang 2 SELESAI & LIVE (commit `947f086`) · Gelombang 3 (12 revisi) — kode selesai, build & deploy menyusul**
 
 Legenda: ✅ selesai & terverifikasi · ⏳ menunggu kredensial (Supabase & Vercel token)
 
 ---
 
-## Gelombang 2 — 10 revisi lanjutan (24 Sep 2026) ✅ (build lulus, 26 route)
+## Gelombang 3 — 12 revisi (24 Sep 2026) ✅ kode selesai (belum build/deploy)
+
+| # | Revisi | Implementasi |
+|---|---|---|
+| 1 | Jadwal punya sidebar sendiri; format list tiap pertemuan (materi, jam, tanggal, kelas), dikustom admin; guru & siswa read-only | `app/jadwal/page.tsx` ditulis ulang: timeline pertemuan bernomor (Pertemuan 1..n) dengan kartu tanggal (hari/bulan), badge kelas, jam, status Hari ini/Selesai/Mendatang, filter kelas chips, form admin (materi, tanggal, jam, kelas, catatan); data legacy tanpa tanggal tetap tampil di akhir; menu **Jadwal** sudah ada di nav ketiga role; teks kartu `/admin` disesuaikan ("per pertemuan"); dashboard: "Jadwal hari ini" cocok `tanggal === todayIso()` (fallback nama hari utk data lama) + kartu "Pertemuan berikutnya" bila kosong (`todayIso()` di `lib/utils.ts`, `AcademicEvent.kelas` di `lib/types.ts`, seed `SEED_EVENTS` 5 pertemuan ber-tanggal) |
+| 2 | Siswa bisa kirim foto pakai kamera (aplikasi akses kamera) | `components/answer-upload.tsx` ditulis ulang: tombol **📷 Kamera** membuka modal getUserMedia (`facingMode: environment`) → pratinjau langsung → canvas → blob JPEG → `/api/upload`; fallback pesan bila kamera tak diizinkan; tombol **+ Foto** tetap; `onActivity` dipanggil saat kamera dibuka (grace pelanggaran evaluasi) |
+| 3 | Tampilan soal multiline (yang dienter guru) harus sama persis di siswa | `whitespace-pre-wrap` pada render `{q.teks}` & `{a.deskripsi}` di `/tugas/[id]`, `/evaluasi/[id]` (pre-start & soal), modal periksa `/periksa` |
+| 4 | Guru tidak perlu fitur mengikuti evaluasi | Guard `/evaluasi/[id]` → `allow={["siswa"]}`; kartu evaluasi di `/evaluasi` hanya navigasi untuk siswa (guru/admin lihat status + aksi kelola tanpa tombol ikut) |
+| 5 | Hasil siswa (guru & admin) lebih terorganisir per jenis tugas — minimalis, jelas, bagus | Chips filter `Semua/Latihan/LKPD/Evaluasi` (dengan hitungan) + badge jenis (`TIPE_LABEL`/`TIPE_TONE`) + kelompok header per jenis + sort `TIPEURUT` lalu `submittedAt` desc di `/periksa` dan AdminGrades `/nilai` |
+| 6 | Siswa hanya bisa mengerjakan evaluasi satu kali | Layar "SUDAH DIKERJAKAN" (menutup start bila sudah ada submission) di `/evaluasi/[id]`; timer resume via localStorage `mathlearn-exam:{aId}:{userId}` (refresh tidak mereset timer, dihapus saat submit); teks aturan jadi "Satu kesempatan — evaluasi hanya bisa dikerjakan satu kali" |
+| 7 | Kecurangan tidak ditampilkan di dashboard guru & admin, cukup di hasil siswa (/periksa) | Stat "Peringatan kecurangan" & kartu cheat di GuruDash dihapus (diganti "Materi dipublikasikan" + "Pengumuman terkirim"); teks cheat di antrean kiriman diganti judul tugas; badge cheat di `/evaluasi` list & `/nilai` siswa dihapus; laporan kecurangan tetap di `/periksa` |
+| 8 | Fitur "Simpan & keluar" pada latihan & LKPD harus fungsional | Draft localStorage `mathlearn-draft:{aId}:{userId}` di `/tugas/[id]`: dipulihkan saat buka halaman (badge "Draf dipulihkan"), autosave tiap perubahan, disimpan eksplisit saat klik Simpan & keluar, dihapus setelah submit |
+| 9 | Evaluasi bisa dikunci admin | `Assignment.terkunci?`; tombol **Kunci evaluasi / Buka kunci** (khusus admin) di kartu `/evaluasi`; badge "Terkunci"; layar terkunci untuk siswa (start diblokir); evaluasi terkunci dikeluarkan dari "Tugas mendatang" dashboard; flag dipertahankan saat edit (`task-modal.tsx`) |
+| 10 | File/link yang ditautkan pada materi bisa ditampilkan preview-nya | `app/materi/[id]`: pratinjau per jenis — PDF → iframe, gambar → `<img>`, video → `<video>`, tautan → iframe `embedUrl()` (YouTube watch/youtu.be → `/embed/`); input **+ Tambah tautan** di `material-modal.tsx` (`MaterialAttachment.tipe = "link"`, badge LINK biru di daftar & `/materi`) |
+| 11 | Perbaiki tulisan pratinjau di materi, sesuaikan dengan file yang ditautkan | Label dinamis `KIND_LABEL` ("Pratinjau PDF/Gambar/Video/Tautan") + nama file di header; ikon kartu per jenis (PDF merah, IMG hijau, VID ungu, LINK biru, FILE amber) + deskripsi sesuai jenis; badge daftar materi hitung "n file · n tautan" (bukan "PDF" buta) |
+| 12 | Cukup satu pratinjau pada satu materi, kecuali beda tipe file/link (maksimal dua) | Slot pratinjau = indeks pertama non-tautan + indeks pertama tautan saja (`fileIdx`/`linkIdx` di `materi/[id]`); lampiran lain hanya kartu daftar |
+
+---
+
+## Gelombang 2 — 10 revisi lanjutan (24 Sep 2026) ✅ LIVE (commit `947f086`, deploy `dpl_F9VTg1ChHcezNjZdfaqJMdJddaCz` READY, E2E produksi PASS)
 
 | # | Revisi | Implementasi |
 |---|---|---|
@@ -22,7 +41,7 @@ Legenda: ✅ selesai & terverifikasi · ⏳ menunggu kredensial (Supabase & Verc
 | 9 | Nilai maksimal 100 | Clamp di publish `/periksa` (nilai akhir + skor AI per soal), input nilai & persentase AI dibatasi 0–100 saat diketik; API AI sudah clamp; submit tugas/evaluasi sudah clamp |
 | 10 | Laporan kecurangan: daftar nama peserta + tombol detail (jenis, menit kejadian, nomor soal) | `/periksa` dikelompokkan per siswa (avatar + jumlah kejadian + tombol "Lihat detail") → modal tabel: jenis (`cheatLabel`, foto = biru), menit ke-…, nomor soal, evaluasi, waktu; `menit` dihitung dari `startedAt` (disimpan di `CheatLog.menit` + `meta.menit` di `/api/cheat-log`); dashboard guru menampilkan label human-readable + menit |
 
-Verifikasi: `npm.cmd run build` ✅ lulus (lint + type check, 26 route, termasuk `/jadwal`). Belum di-push (menunggu verifikasi akhir → deploy).
+Verifikasi: `npm.cmd run build` ✅ lulus (lint + type check, 26 route) → commit `947f086` → push → Vercel READY → E2E produksi PASS (24 Sep 2026).
 
 ---
 

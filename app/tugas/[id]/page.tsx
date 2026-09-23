@@ -2,12 +2,17 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AppShell, Guard } from "@/components/shell";
 import { AnswerUpload } from "@/components/answer-upload";
 import { Badge, Modal } from "@/components/ui";
 import { useStore } from "@/lib/store";
 import { heuristicGrade, nowIso, pgCorrect, uid } from "@/lib/utils";
+
+/** Draf "Simpan & keluar" per tugas + siswa — bertahan walau tab ditutup. */
+function draftKey(aId: string, userId: string) {
+  return `mathlearn-draft:${aId}:${userId}`;
+}
 
 export default function KerjakanTugasPage() {
   return (
@@ -29,6 +34,38 @@ function Work() {
   const [busy, setBusy] = useState(false);
   const [ask, setAsk] = useState(false);
   const [result, setResult] = useState<{ nilai: number; pgBenar: number } | null>(null);
+  const [draftRestored, setDraftRestored] = useState(false);
+  const loadedDraft = useRef(false);
+  const hydrated = useRef(false);
+
+  // Pulihkan draf "Simpan & keluar" saat halaman dibuka.
+  useEffect(() => {
+    if (!a || !user || loadedDraft.current) return;
+    loadedDraft.current = true;
+    try {
+      const raw = localStorage.getItem(draftKey(a.id, user.id));
+      if (raw) {
+        const d = JSON.parse(raw) as { answers?: Record<string, string>; attachments?: Record<string, import("@/lib/types").MaterialAttachment[]> };
+        if (d.answers && Object.keys(d.answers).length) setAnswers(d.answers);
+        if (d.attachments && Object.keys(d.attachments).length) setAnswerAttachments(d.attachments);
+        if (d.answers || d.attachments) setDraftRestored(true);
+      }
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [a?.id, user?.id]);
+
+  // Simpan draf otomatis setiap ada perubahan (lewati render pertama sebelum draf dipulihkan).
+  useEffect(() => {
+    if (!a || !user || !loadedDraft.current) return;
+    if (!hydrated.current) {
+      hydrated.current = true;
+      return;
+    }
+    try {
+      localStorage.setItem(draftKey(a.id, user.id), JSON.stringify({ answers, attachments: answerAttachments }));
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [answers, answerAttachments]);
 
   const ordered = useMemo(() => {
     if (!a) return [];
@@ -91,6 +128,7 @@ function Work() {
         cheatCount: 0,
       });
       addNotification({ userId: "all-guru", kategori: "kiriman", judul: `${user.nama} mengumpulkan ${a!.judul}`, isi: `Nilai sementara ${total}. Perlu ${a!.tipe === "latihan" ? "verifikasi" : "penilaian"}.` });
+      try { localStorage.removeItem(draftKey(a!.id, user.id)); } catch {}
       const pgBenar = a!.questions.filter((q) => q.tipe === "pg" && pgCorrect(answers[q.id] || "", q.kunci)).length;
       setResult({ nilai: total, pgBenar });
       void pgBobot;
@@ -106,9 +144,10 @@ function Work() {
         <Badge tone="purple">{a.tipe.toUpperCase()}</Badge>
         <Badge>{a.kelas}</Badge>
         {already ? <Badge tone="green">Sudah dikumpulkan</Badge> : null}
+        {draftRestored && !already ? <Badge tone="blue">Draf dipulihkan</Badge> : null}
       </div>
       <h1 className="h1 mt-2">{a.judul}</h1>
-      <p className="muted mt-1 max-w-[680px]">{a.deskripsi}</p>
+      <p className="muted mt-1 max-w-[680px] whitespace-pre-wrap">{a.deskripsi}</p>
       {a.deskripsiGambar?.length ? (
         <div className="flex flex-wrap gap-2 mt-2">
           {a.deskripsiGambar.map((g, i) => (
@@ -123,7 +162,7 @@ function Work() {
         {ordered.map((q, i) => (
           <div key={q.id} className="card card-pad">
             <p className="text-[12.5px] font-medium text-ink-muted">SOAL {i + 1} · {q.tipe.toUpperCase()} · {q.bobot} poin</p>
-            <p className="text-[14.5px] font-medium mt-1">{q.teks}</p>
+            <p className="text-[14.5px] font-medium mt-1 whitespace-pre-wrap">{q.teks}</p>
             {q.gambar?.length ? (
               <div className="flex flex-wrap gap-2 mt-2">
                 {q.gambar.map((g, gi) => (
@@ -150,9 +189,17 @@ function Work() {
         ))}
         <div className="flex gap-2">
           <button className="btn-primary" disabled={busy} onClick={() => setAsk(true)}>{busy ? "Menilai…" : already ? "Kumpulkan ulang" : "Kumpulkan jawaban"}</button>
-          <button className="btn-ghost" onClick={() => router.push(backHref)}>Simpan & keluar</button>
+          <button
+            className="btn-ghost"
+            onClick={() => {
+              try {
+                if (user) localStorage.setItem(draftKey(a.id, user.id), JSON.stringify({ answers, attachments: answerAttachments }));
+              } catch {}
+              router.push(backHref);
+            }}
+          >Simpan & keluar</button>
         </div>
-        <p className="muted">Pilihan ganda dinilai otomatis. Uraian & essay dibantu AI lalu diverifikasi guru.</p>
+        <p className="muted">Pilihan ganda dinilai otomatis. Uraian & essay dibantu AI lalu diverifikasi guru. Jawabanmu tersimpan otomatis sebagai draf.</p>
       </div>
 
       <Modal open={ask} onClose={() => setAsk(false)} title="Yakin mengumpulkan?">

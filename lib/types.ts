@@ -18,6 +18,8 @@ export interface MaterialAttachment {
   url: string;
   name: string;
   size?: number;
+  /** "link" = tautan eksternal (bukan file unggahan). Data lama tanpa tipe dianggap file. */
+  tipe?: "file" | "link";
 }
 
 export interface Material {
@@ -63,6 +65,8 @@ export interface Assignment {
   tutupAt: string | null;
   acakSoal: boolean;
   kunciTab: boolean;
+  /** Dikunci admin: siswa tidak bisa mengerjakan evaluasi sampai dibuka lagi. */
+  terkunci?: boolean;
   createdBy: string;
   questions: Question[];
 }
@@ -133,6 +137,8 @@ export interface AcademicEvent {
   jamSelesai?: string;
   /** Kategori agenda: UTS | UAS | Libur | Hari Penting | Kegiatan. */
   kategori?: string;
+  /** Hanya untuk jadwal: kelas tujuan (cth. "VIII-A"). */
+  kelas?: string;
 }
 
 export interface Presence {

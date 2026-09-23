@@ -6,23 +6,33 @@ import { useEffect } from "react";
 import { AppShell } from "@/components/shell";
 import { Badge, PageHeader, Progress, Stat } from "@/components/ui";
 import { useStore } from "@/lib/store";
-import { cheatLabel, fmtDateTime, STATUS_TUGAS_META } from "@/lib/utils";
+import { fmtDateTime, STATUS_TUGAS_META, todayIso } from "@/lib/utils";
 
 function SiswaDash() {
   const { user, assignments, submissions, announcements, materials, events } = useStore();
   const mine = submissions.filter((s) => s.siswaId === user?.id);
   const doneIds = new Set(mine.map((s) => s.assignmentId));
-  const upcoming = assignments.filter((a) => !doneIds.has(a.id)).slice(0, 4);
+  const upcoming = assignments.filter((a) => !doneIds.has(a.id) && !(a.tipe === "evaluasi" && a.terkunci)).slice(0, 4);
   const graded = mine.filter((s) => s.status === "dinilai" && s.nilai != null).sort((a, b) => b.submittedAt.localeCompare(a.submittedAt));
   const last = graded[0] || null;
   const lastAssign = last ? assignments.find((a) => a.id === last.assignmentId) : null;
   const progress = assignments.length ? Math.round((doneIds.size / assignments.length) * 100) : 0;
 
-  // Jadwal hari ini + agenda terdekan (kalender akademik) — hanya baris jadwal/agenda, bukan agenda kosong.
-  const hariIni = new Date().toLocaleDateString("id-ID", { weekday: "long" });
+  // Jadwal hari ini (per pertemuan, cocok tanggal) + pertemuan terdekat bila hari ini kosong.
+  // Data lama tanpa tanggal dianggap jadwal mingguan → cocokkan nama hari.
+  const hariIni = todayIso();
+  const namaHari = new Date().toLocaleDateString("id-ID", { weekday: "long" }).toLowerCase();
+  const cocokHariIni = (e: (typeof events)[number]) =>
+    e.tanggal === hariIni || (!e.tanggal && (e.hari || "").toLowerCase() === namaHari);
   const jadwalHariIni = events
-    .filter((e) => e.jenis === "jadwal" && (e.hari || "").toLowerCase() === hariIni.toLowerCase())
+    .filter((e) => e.jenis === "jadwal" && cocokHariIni(e))
     .sort((a, b) => (a.jamMulai || "").localeCompare(b.jamMulai || ""));
+  const pertemuanBerikut = jadwalHariIni.length === 0
+    ? events
+        .filter((e) => e.jenis === "jadwal" && e.tanggal >= hariIni)
+        .sort((a, b) => (a.tanggal || "").localeCompare(b.tanggal || ""))
+        .slice(0, 3)
+    : [];
   const agendaList = events.filter((e) => e.jenis !== "jadwal").sort((a, b) => (a.tanggal || "").localeCompare(b.tanggal || "")).slice(0, 3);
 
   return (
@@ -70,15 +80,16 @@ function SiswaDash() {
         <div className="space-y-3">
           <div className="card card-pad">
             <div className="flex items-center justify-between mb-2">
-              <p className="h2">Jadwal hari ini</p>
+              <p className="h2">{jadwalHariIni.length ? "Jadwal hari ini" : "Pertemuan berikutnya"}</p>
               <Link href="/jadwal" className="text-[13px] text-primary font-medium">Lihat jadwal</Link>
             </div>
-            {jadwalHariIni.length === 0 ? <p className="muted">Tidak ada jadwal {hariIni}.</p> : (
+            {jadwalHariIni.length === 0 && pertemuanBerikut.length === 0 ? <p className="muted">Belum ada pertemuan terjadwal.</p> : (
               <div className="divide-y divide-line -mx-1">
-                {jadwalHariIni.map((e) => (
+                {(jadwalHariIni.length ? jadwalHariIni : pertemuanBerikut).map((e) => (
                   <div key={e.id} className="flex items-center gap-3 py-2.5 px-1">
-                    <span className="badge bg-wash text-ink-soft border-line shrink-0 tabular-nums">{e.jamMulai || "—"}–{e.jamSelesai || "—"}</span>
+                    <span className="badge bg-wash text-ink-soft border-line shrink-0 tabular-nums">{e.tanggal ? `${Number(e.tanggal.slice(8, 10))}/${Number(e.tanggal.slice(5, 7))}` : "—"} · {e.jamMulai || "—"}–{e.jamSelesai || "—"}</span>
                     <span className="min-w-0 flex-1"><span className="block text-[14px] font-medium truncate">{e.judul}</span>{e.deskripsi ? <span className="muted !text-[12.5px]">{e.deskripsi}</span> : null}</span>
+                    {e.kelas ? <span className="badge bg-primary-50 text-primary border-primary-100 shrink-0">{e.kelas}</span> : null}
                   </div>
                 ))}
               </div>
@@ -119,13 +130,14 @@ function SiswaDash() {
 }
 
 function GuruDash() {
-  const { user, submissions, assignments, cheatLogs, announcements, events } = useStore();
+  const { user, submissions, assignments, announcements, events, materials } = useStore();
   const pending = submissions.filter((s) => s.status !== "dinilai");
   const activeEval = assignments.filter((a) => a.tipe === "evaluasi");
-  // Stat kecurangan: "foto" adalah kegiatan menambahkan foto, bukan pelanggaran.
-  const pelanggaran = cheatLogs.filter((c) => c.tipe !== "foto");
+  // Jadwal hari ini — pertemuan tanggal sama hari ini; data lama (mingguan) cocok nama hari.
+  const hariIni = todayIso();
+  const namaHari = new Date().toLocaleDateString("id-ID", { weekday: "long" }).toLowerCase();
   const jadwalHariIni = events
-    .filter((e) => e.jenis === "jadwal" && (e.hari || "").toLowerCase() === new Date().toLocaleDateString("id-ID", { weekday: "long" }).toLowerCase())
+    .filter((e) => e.jenis === "jadwal" && (e.tanggal === hariIni || (!e.tanggal && (e.hari || "").toLowerCase() === namaHari)))
     .sort((a, b) => (a.jamMulai || "").localeCompare(b.jamMulai || ""));
 
   return (
@@ -138,7 +150,7 @@ function GuruDash() {
       <div className="grid sm:grid-cols-3 gap-3">
         <Stat label="Perlu diperiksa" value={String(pending.length)} sub="kiriman menunggu keputusan" />
         <Stat label="Evaluasi aktif" value={String(activeEval.length)} sub="jadwal berjalan" />
-        <Stat label="Peringatan kecurangan" value={String(pelanggaran.length)} sub="total deteksi pindah tab" />
+        <Stat label="Materi dipublikasikan" value={String(materials.length)} sub="bahan bacaan kelas" />
       </div>
       <div className="grid lg:grid-cols-2 gap-3 mt-3">
         <div className="card card-pad">
@@ -146,26 +158,19 @@ function GuruDash() {
           {pending.length === 0 ? <p className="muted mt-2">Tidak ada antrean. Semua sudah dinilai.</p> :
             pending.slice(0, 5).map((s) => (
               <div key={s.id} className="flex items-center gap-3 py-2.5 border-t border-line first:border-0">
-                <div className="min-w-0 flex-1"><p className="text-[14px] font-medium truncate">{s.siswaNama}</p><p className="muted !text-[12.5px]">{s.kelas} · {s.cheatCount > 0 ? `${s.cheatCount}x pindah tab` : "tanpa pelanggaran"}</p></div>
+                <div className="min-w-0 flex-1"><p className="text-[14px] font-medium truncate">{s.siswaNama}</p><p className="muted !text-[12.5px]">{s.kelas} · {assignments.find((a) => a.id === s.assignmentId)?.judul || "Tugas"}</p></div>
                 <Badge tone={STATUS_TUGAS_META["belum-diperiksa"].tone}>{STATUS_TUGAS_META["belum-diperiksa"].label}</Badge>
               </div>
             ))}
         </div>
         <div className="card card-pad">
           <div className="flex items-center justify-between mb-1"><p className="h2">Jadwal hari ini</p><Link href="/jadwal" className="text-[13px] text-primary font-medium">Detail</Link></div>
-          {jadwalHariIni.length === 0 ? <p className="muted mt-2">Tidak ada jadwal hari ini.</p> :
+          {jadwalHariIni.length === 0 ? <p className="muted mt-2">Tidak ada pertemuan hari ini.</p> :
             jadwalHariIni.map((e) => (
               <div key={e.id} className="flex items-center gap-3 py-2 border-t border-line first:border-0 text-[13px]">
                 <span className="badge bg-wash text-ink-soft border-line shrink-0 tabular-nums">{e.jamMulai || "—"}–{e.jamSelesai || "—"}</span>
                 <span className="min-w-0 flex-1 truncate font-medium">{e.judul}</span>
-              </div>
-            ))}
-          <div className="divider my-3" />
-          <p className="h2 mb-1">Peringatan kecurangan terbaru</p>
-          {pelanggaran.length === 0 ? <p className="muted mt-2">Belum ada pelanggaran tercatat.</p> :
-            pelanggaran.slice(0, 5).map((c) => (
-              <div key={c.id} className="py-2 border-t border-line first:border-0 text-[13px]">
-                <b>{c.siswaNama}</b> <span className="text-ink-muted">{cheatLabel(c.tipe)}{c.menit ? ` · menit ke-${c.menit}` : ""} · {fmtDateTime(c.timestamp)}</span>
+                {e.kelas ? <span className="badge bg-primary-50 text-primary border-primary-100 shrink-0">{e.kelas}</span> : null}
               </div>
             ))}
           <div className="divider my-3" />

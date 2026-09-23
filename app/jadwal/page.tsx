@@ -4,10 +4,12 @@ import { useState } from "react";
 import { AppShell, Guard } from "@/components/shell";
 import { Badge, Empty, PageHeader } from "@/components/ui";
 import { useStore } from "@/lib/store";
-import { fmtTanggal, KATEGORI_AGENDA, kategoriTone, uid } from "@/lib/utils";
+import { fmtTanggal, KATEGORI_AGENDA, kategoriTone, todayIso, uid } from "@/lib/utils";
 import type { AcademicEvent } from "@/lib/types";
 
 const HARI = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"] as const;
+const BULAN = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"] as const;
+const KELAS_LIST = ["VII-A", "VII-B", "VIII-A", "VIII-B", "IX-A", "IX-B"];
 
 export default function JadwalPage() {
   return (
@@ -19,23 +21,39 @@ export default function JadwalPage() {
   );
 }
 
+/** Urutkan pertemuan: tanggal terisi dulu (menaik), data lama tanpa tanggal di akhir per hari. */
+function urutPertemuan(a: AcademicEvent, b: AcademicEvent): number {
+  if (a.tanggal && b.tanggal) return a.tanggal.localeCompare(b.tanggal) || (a.jamMulai || "").localeCompare(b.jamMulai || "");
+  if (a.tanggal) return -1;
+  if (b.tanggal) return 1;
+  const ha = HARI.indexOf((a.hari || "") as (typeof HARI)[number]);
+  const hb = HARI.indexOf((b.hari || "") as (typeof HARI)[number]);
+  return (ha < 0 ? 9 : ha) - (hb < 0 ? 9 : hb);
+}
+
 function Content() {
   const { events, user, upsertEvent, deleteEvent } = useStore();
   const isAdmin = user?.role === "admin";
+  const today = todayIso();
 
-  const jadwal = events.filter((e) => e.jenis === "jadwal");
+  const semuaJadwal = events.filter((e) => e.jenis === "jadwal").slice().sort(urutPertemuan);
+  const daftarKelas = Array.from(new Set(semuaJadwal.map((e) => e.kelas).filter(Boolean))) as string[];
+  const [kelasFilter, setKelasFilter] = useState("semua");
+  const jadwal = kelasFilter === "semua" ? semuaJadwal : semuaJadwal.filter((e) => e.kelas === kelasFilter);
+
   const agenda = events
     .filter((e) => e.jenis !== "jadwal")
     .slice()
     .sort((a, b) => (a.tanggal || "").localeCompare(b.tanggal || ""));
 
-  const [editJadwal, setEditJadwal] = useState<AcademicEvent | null>(null);
-  const [jFormOpen, setJFormOpen] = useState(false);
-  const [jHari, setJHari] = useState<string>("Senin");
-  const [jJamMulai, setJJamMulai] = useState("07:00");
-  const [jJamSelesai, setJJamSelesai] = useState("08:30");
-  const [jMapel, setJMapel] = useState("");
-  const [jCatatan, setJCatatan] = useState("");
+  const [editPertemuan, setEditPertemuan] = useState<AcademicEvent | null>(null);
+  const [formOpen, setFormOpen] = useState(false);
+  const [materi, setMateri] = useState("");
+  const [tanggal, setTanggal] = useState("");
+  const [jamMulai, setJamMulai] = useState("07:00");
+  const [jamSelesai, setJamSelesai] = useState("08:30");
+  const [kelas, setKelas] = useState("VIII-A");
+  const [catatan, setCatatan] = useState("");
 
   const [editAgenda, setEditAgenda] = useState<AcademicEvent | null>(null);
   const [aFormOpen, setAFormOpen] = useState(false);
@@ -44,35 +62,37 @@ function Content() {
   const [aKategori, setAKategori] = useState<string>("Kegiatan");
   const [aDeskripsi, setADeskripsi] = useState("");
 
-  function openJadwal(e: AcademicEvent | null) {
-    setEditJadwal(e);
-    setJFormOpen(true);
-    setJHari(e?.hari || "Senin");
-    setJJamMulai(e?.jamMulai || "07:00");
-    setJJamSelesai(e?.jamSelesai || "08:30");
-    setJMapel(e?.judul || "");
-    setJCatatan(e?.deskripsi || "");
+  function openPertemuan(e: AcademicEvent | null) {
+    setEditPertemuan(e);
+    setFormOpen(true);
+    setMateri(e?.judul || "");
+    setTanggal(e?.tanggal || "");
+    setJamMulai(e?.jamMulai || "07:00");
+    setJamSelesai(e?.jamSelesai || "08:30");
+    setKelas(e?.kelas || "VIII-A");
+    setCatatan(e?.deskripsi || "");
   }
 
-  function saveJadwal() {
-    if (!jMapel.trim()) return;
+  function savePertemuan() {
+    if (!materi.trim() || !tanggal) return;
     upsertEvent({
-      id: editJadwal?.id || uid("ev"),
+      id: editPertemuan?.id || uid("ev"),
       jenis: "jadwal",
-      judul: jMapel.trim(),
-      hari: jHari,
-      jamMulai: jJamMulai,
-      jamSelesai: jJamSelesai,
-      deskripsi: jCatatan.trim(),
-      tanggal: "",
+      judul: materi.trim(),
+      tanggal,
+      jamMulai,
+      jamSelesai,
+      kelas,
+      deskripsi: catatan.trim(),
+      hari: "",
     });
-    setJFormOpen(false);
-    setEditJadwal(null);
+    setFormOpen(false);
+    setEditPertemuan(null);
   }
 
-  function closeJadwal() {
-    setJFormOpen(false);
-    setEditJadwal(null);
+  function closePertemuan() {
+    setFormOpen(false);
+    setEditPertemuan(null);
   }
 
   function openAgenda(e: AcademicEvent | null) {
@@ -109,75 +129,107 @@ function Content() {
   return (
     <div className="page-wrap !px-0 !pb-0 !max-w-none">
       <PageHeader
-        title="Jadwal & Kalender Akademik"
-        desc="Jadwal mata pelajaran mingguan beserta jamnya, dan agenda penting seperti UTS, UAS, libur, serta hari besar."
+        title="Jadwal Pertemuan"
+        desc={
+          isAdmin
+            ? "Daftar tiap pertemuan: materi, tanggal, jam, dan kelas. Atur sesuai kebutuhan mengajar."
+            : "Daftar pertemuan beserta materi, tanggal, jam, dan kelasnya."
+        }
+        right={isAdmin && !formOpen ? <button className="btn-primary text-[13px]" onClick={() => openPertemuan(null)}>+ Tambah pertemuan</button> : undefined}
       />
 
       <div className="card overflow-hidden mb-3">
         <div className="px-4 py-3 border-b border-line flex flex-wrap items-center justify-between gap-2">
           <div>
-            <p className="h2">Jadwal pelajaran</p>
-            <p className="muted mt-0.5">{isAdmin ? "Atur mata pelajaran, hari, dan jam untuk setiap kelas." : "Jadwal mengajar mingguan kelas VIII-A."}</p>
+            <p className="h2">Daftar pertemuan ({jadwal.length})</p>
+            <p className="muted mt-0.5">{isAdmin ? "Klik \"Ubah\" pada pertemuan untuk menyunting, atau tambah pertemuan baru." : "Tampilan read-only — diperbarui oleh admin."}</p>
           </div>
-          {isAdmin ? (
-            <button className="btn-primary text-[13px]" onClick={() => openJadwal(null)}>+ Tambah jadwal</button>
+          {daftarKelas.length > 1 ? (
+            <div className="flex flex-wrap gap-1">
+              {["semua", ...daftarKelas].map((k) => (
+                <button key={k} onClick={() => setKelasFilter(k)} className={`btn !py-1.5 !px-3 !text-[12.5px] ${kelasFilter === k ? "bg-ink text-white" : "btn-ghost"}`}>
+                  {k === "semua" ? "Semua kelas" : k}
+                </button>
+              ))}
+            </div>
           ) : null}
         </div>
 
         {jadwal.length === 0 ? (
-          <Empty title="Belum ada jadwal" desc={isAdmin ? "Tambahkan jadwal mata pelajaran agar siswa dan guru bisa melihatnya." : "Guru/admin belum menambahkan jadwal pelajaran."} />
+          <Empty title="Belum ada pertemuan" desc={isAdmin ? "Klik \"+ Tambah pertemuan\" untuk membuat jadwal pertama." : "Admin belum menambahkan jadwal pertemuan."} />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-[13.5px] min-w-[640px]">
-              <thead>
-                <tr className="text-left text-[12px] text-ink-muted bg-wash/50">
-                  <th className="px-4 py-2.5 font-medium">Hari</th>
-                  <th className="px-4 py-2.5 font-medium">Jam</th>
-                  <th className="px-4 py-2.5 font-medium">Mata pelajaran</th>
-                  <th className="px-4 py-2.5 font-medium">Catatan</th>
-                  {isAdmin ? <th className="px-4 py-2.5" /> : null}
-                </tr>
-              </thead>
-              <tbody>
-                {HARI.flatMap((h) =>
-                  jadwal
-                    .filter((e) => e.hari === h)
-                    .sort((a, b) => (a.jamMulai || "").localeCompare(b.jamMulai || ""))
-                    .map((e) => (
-                      <tr key={e.id} className="table-row">
-                        <td className="px-4 py-2.5 font-medium whitespace-nowrap">{h}</td>
-                        <td className="px-4 py-2.5 whitespace-nowrap tabular-nums text-ink-muted">{e.jamMulai || "—"} – {e.jamSelesai || "—"}</td>
-                        <td className="px-4 py-2.5"><b>{e.judul}</b></td>
-                        <td className="px-4 py-2.5 text-ink-muted">{e.deskripsi || "—"}</td>
-                        {isAdmin ? (
-                          <td className="px-4 py-2.5 text-right whitespace-nowrap">
-                            <button className="btn-ghost !py-1 !text-[12.5px]" onClick={() => openJadwal(e)}>Ubah</button>{" "}
-                            <button className="text-red-600 text-[12.5px]" onClick={() => deleteEvent(e.id)}>Hapus</button>
-                          </td>
-                        ) : null}
-                      </tr>
-                    ))
-                )}
-              </tbody>
-            </table>
-          </div>
+          <ol className="px-4 py-2">
+            {jadwal.map((e, i) => {
+              const dated = !!e.tanggal;
+              const status = !dated ? "lama" : e.tanggal < today ? "selesai" : e.tanggal === today ? "hari-ini" : "akan";
+              const [dd, mm] = dated ? [e.tanggal.slice(8, 10), e.tanggal.slice(5, 7)] : ["", ""];
+              return (
+                <li key={e.id} className="relative flex gap-3 sm:gap-4 py-3">
+                  {/* Rail kiri: tanggal + garis pertemuan */}
+                  <div className="flex flex-col items-center w-[58px] shrink-0">
+                    <div
+                      className={`w-[54px] rounded-xl border text-center py-1.5 ${
+                        status === "hari-ini"
+                          ? "border-amber-300 bg-amber-50"
+                          : status === "selesai"
+                            ? "border-line bg-wash"
+                            : "border-primary-100 bg-primary-50"
+                      }`}
+                    >
+                      {dated ? (
+                        <>
+                          <p className="text-[16px] font-bold leading-none">{Number(dd)}</p>
+                          <p className="text-[10.5px] text-ink-muted mt-0.5">{BULAN[Number(mm) - 1] || mm}</p>
+                        </>
+                      ) : (
+                        <p className="text-[11px] font-semibold text-ink-muted py-1">{(e.hari || "?").slice(0, 3)}</p>
+                      )}
+                    </div>
+                    {i < jadwal.length - 1 ? <span className="w-px flex-1 bg-line mt-2 min-h-[24px]" aria-hidden /> : null}
+                  </div>
+
+                  {/* Kartu isi pertemuan */}
+                  <div className={`flex-1 min-w-0 card card-pad !py-3.5 ${status === "hari-ini" ? "!border-amber-300" : ""}`}>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge tone="purple">Pertemuan {i + 1}</Badge>
+                      {e.kelas ? <Badge tone="blue">{e.kelas}</Badge> : null}
+                      <span className="badge bg-wash text-ink-soft border-line tabular-nums">{e.jamMulai || "—"}–{e.jamSelesai || "—"}</span>
+                      {status === "hari-ini" ? <Badge tone="amber">Hari ini</Badge> : status === "selesai" ? <Badge tone="green">Selesai</Badge> : status === "akan" ? <Badge tone="gray">Mendatang</Badge> : null}
+                      {isAdmin ? (
+                        <span className="ml-auto flex gap-2 shrink-0">
+                          <button className="btn-ghost !py-1 !text-[12.5px]" onClick={() => openPertemuan(e)}>Ubah</button>
+                          <button className="text-red-600 text-[12.5px]" onClick={() => deleteEvent(e.id)}>Hapus</button>
+                        </span>
+                      ) : null}
+                    </div>
+                    <p className="text-[15px] font-semibold mt-2 leading-snug">{e.judul}</p>
+                    <p className="muted !text-[12.5px] mt-0.5">{dated ? fmtTanggal(e.tanggal) : `Setiap ${e.hari || "—"}`}</p>
+                    {e.deskripsi ? <p className="text-[13px] text-ink-soft mt-1 whitespace-pre-wrap">{e.deskripsi}</p> : null}
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
         )}
 
-        {isAdmin && jFormOpen ? (
+        {isAdmin && formOpen ? (
           <div className="px-4 py-3 border-t border-line bg-wash/40 space-y-2">
-            <p className="text-[13px] font-semibold">{editJadwal ? "Ubah jadwal" : "Jadwal baru"}</p>
-            <div className="grid sm:grid-cols-4 gap-2">
-              <select className="input" value={jHari} onChange={(e) => setJHari(e.target.value)} aria-label="Hari">
-                {HARI.map((h) => <option key={h} value={h}>{h}</option>)}
+            <p className="text-[13px] font-semibold">{editPertemuan ? "Ubah pertemuan" : "Pertemuan baru"}</p>
+            <div className="grid sm:grid-cols-2 gap-2">
+              <input className="input" value={materi} onChange={(e) => setMateri(e.target.value)} placeholder="Materi pertemuan (cth. Bilangan bulat)" />
+              <select className="input" value={kelas} onChange={(e) => setKelas(e.target.value)} aria-label="Kelas">
+                {KELAS_LIST.map((k) => <option key={k} value={k}>{k}</option>)}
               </select>
-              <input type="time" className="input" value={jJamMulai} onChange={(e) => setJJamMulai(e.target.value)} aria-label="Jam mulai" />
-              <input type="time" className="input" value={jJamSelesai} onChange={(e) => setJJamSelesai(e.target.value)} aria-label="Jam selesai" />
-              <input className="input" value={jMapel} onChange={(e) => setJMapel(e.target.value)} placeholder="Mata pelajaran (cth. Matematika)" />
             </div>
-            <input className="input" value={jCatatan} onChange={(e) => setJCatatan(e.target.value)} placeholder="Catatan / ruang kelas (opsional)" />
+            <div className="grid sm:grid-cols-3 gap-2">
+              <input type="date" className="input" value={tanggal} onChange={(e) => setTanggal(e.target.value)} aria-label="Tanggal" />
+              <input type="time" className="input" value={jamMulai} onChange={(e) => setJamMulai(e.target.value)} aria-label="Jam mulai" />
+              <input type="time" className="input" value={jamSelesai} onChange={(e) => setJamSelesai(e.target.value)} aria-label="Jam selesai" />
+            </div>
+            <textarea className="input min-h-[64px]" value={catatan} onChange={(e) => setCatatan(e.target.value)} placeholder="Catatan / ruang kelas (opsional)" />
             <div className="flex gap-2">
-              <button className="btn-primary text-[13px]" disabled={!jMapel.trim()} onClick={saveJadwal}>{editJadwal ? "Simpan perubahan" : "Tambah jadwal"}</button>
-              <button className="btn-ghost text-[13px]" onClick={closeJadwal}>Batal</button>
+              <button className="btn-primary text-[13px]" disabled={!materi.trim() || !tanggal} onClick={savePertemuan}>{editPertemuan ? "Simpan perubahan" : "Tambah pertemuan"}</button>
+              <button className="btn-ghost text-[13px]" onClick={closePertemuan}>Batal</button>
             </div>
           </div>
         ) : null}
@@ -204,7 +256,7 @@ function Content() {
                 <Badge tone={kategoriTone(e.kategori)}>{e.kategori || "Kegiatan"}</Badge>
                 <div className="min-w-0 flex-1">
                   <p className="text-[14px] font-medium">{e.judul}</p>
-                  {e.deskripsi ? <p className="muted mt-0.5">{e.deskripsi}</p> : null}
+                  {e.deskripsi ? <p className="muted mt-0.5 whitespace-pre-wrap">{e.deskripsi}</p> : null}
                 </div>
                 {isAdmin ? (
                   <div className="shrink-0">

@@ -66,13 +66,12 @@ export const SEED_ASSIGNMENTS: Assignment[] = [];
 export const SEED_ANNOUNCEMENTS: Announcement[] = [];
 
 export const SEED_EVENTS: AcademicEvent[] = [
-  // — Jadwal mata pelajaran mingguan (tampil untuk siswa, guru, admin) —
-  { id: "ev-jadwal-1", jenis: "jadwal", judul: "Matematika", hari: "Senin", jamMulai: "07:00", jamSelesai: "08:30", tanggal: "", deskripsi: "VIII-A · Ruang 12" },
-  { id: "ev-jadwal-2", jenis: "jadwal", judul: "Matematika", hari: "Selasa", jamMulai: "07:00", jamSelesai: "08:30", tanggal: "", deskripsi: "VIII-A · Ruang 12" },
-  { id: "ev-jadwal-3", jenis: "jadwal", judul: "Matematika", hari: "Rabu", jamMulai: "07:00", jamSelesai: "08:30", tanggal: "", deskripsi: "VIII-A · Ruang 12" },
-  { id: "ev-jadwal-4", jenis: "jadwal", judul: "Matematika", hari: "Kamis", jamMulai: "07:00", jamSelesai: "08:30", tanggal: "", deskripsi: "VIII-A · Ruang 12" },
-  { id: "ev-jadwal-5", jenis: "jadwal", judul: "Matematika", hari: "Jumat", jamMulai: "07:00", jamSelesai: "08:00", tanggal: "", deskripsi: "VIII-A · Ruang 12" },
-  { id: "ev-jadwal-6", jenis: "jadwal", judul: "Remedial & pengayaan", hari: "Jumat", jamMulai: "09:30", jamSelesai: "11:00", tanggal: "", deskripsi: "Ruang 12 · terbuka untuk semua siswa" },
+  // — Jadwal per pertemuan (materi, tanggal, jam, kelas) — dikustom admin, tampil read-only ke guru & siswa —
+  { id: "ev-jadwal-1", jenis: "jadwal", kelas: "VIII-A", judul: "Bilangan bulat & operasi hitung", tanggal: "2026-09-28", jamMulai: "07:00", jamSelesai: "08:30", hari: "", deskripsi: "Ruang 12 · pengenalan materi + latihan dasar" },
+  { id: "ev-jadwal-2", jenis: "jadwal", kelas: "VIII-A", judul: "Pangkat & akar pangkat dua", tanggal: "2026-09-30", jamMulai: "07:00", jamSelesai: "08:30", hari: "", deskripsi: "Ruang 12 · LKPD eksplorasi akar" },
+  { id: "ev-jadwal-3", jenis: "jadwal", kelas: "VIII-A", judul: "Notasi ilmiah & data statistik", tanggal: "2026-10-02", jamMulai: "07:00", jamSelesai: "08:30", hari: "", deskripsi: "Ruang 12 · penyajian data" },
+  { id: "ev-jadwal-4", jenis: "jadwal", kelas: "VIII-A", judul: "Persamaan linear satu variabel", tanggal: "2026-10-05", jamMulai: "07:00", jamSelesai: "08:30", hari: "", deskripsi: "Ruang 12 · latihan soal + evaluasi" },
+  { id: "ev-jadwal-5", jenis: "jadwal", kelas: "VIII-A", judul: "Remedial & pengayaan", tanggal: "2026-10-09", jamMulai: "09:30", jamSelesai: "11:00", hari: "", deskripsi: "Ruang 12 · terbuka untuk semua siswa" },
   // — Kalender akademik (agenda penting) —
   { id: "ev-agenda-1", jenis: "agenda", kategori: "UTS", judul: "UTS Semester Ganjil", tanggal: "2026-10-12", deskripsi: "Dilaksanakan 12–17 Oktober 2026 untuk seluruh mata pelajaran." },
   { id: "ev-agenda-2", jenis: "agenda", kategori: "Hari Penting", judul: "Hari Guru Nasional", tanggal: "2026-11-25", deskripsi: "Upacara di lapangan sekolah pukul 07.00 WIB." },

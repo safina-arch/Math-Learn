@@ -129,7 +129,7 @@ function Content() {
 
           <div className="card card-pad">
             <p className="h2 mb-2">Jadwal &amp; kalender akademik</p>
-            <p className="muted mb-2">Atur jadwal mata pelajaran (hari &amp; jam), agenda UTS/UAS, libur, dan hari penting di halaman khusus — tampil langsung untuk siswa &amp; guru.</p>
+            <p className="muted mb-2">Atur jadwal per pertemuan (tanggal, jam, materi, kelas) serta agenda UTS/UAS, libur, dan hari penting di halaman khusus — tampil langsung untuk siswa &amp; guru.</p>
             <div className="space-y-1.5 mb-3">
               <p className="text-[13px] font-semibold">Agenda terdekat</p>
               {events.filter((e) => e.jenis !== "jadwal").slice(0, 4).map((e) => (

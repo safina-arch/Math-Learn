@@ -1,4 +1,4 @@
-import type { Assignment, Submission, User } from "./types";
+import type { Assignment, AssignmentType, Submission, User } from "./types";
 
 export function uid(prefix = "id"): string {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
@@ -123,6 +123,17 @@ export function statusRingkasan(assignments: Assignment[], submissions: Submissi
   }
   return { belum, blm, sudah };
 }
+
+/** Tanggal hari ini (YYYY-MM-DD) — zone waktu lokal, untuk mencocokkan jadwal pertemuan. */
+export function todayIso(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/** Label & warna badge jenis tugas — dipakai "Hasil siswa" (guru) & nilai (admin). */
+export const TIPE_LABEL: Record<AssignmentType, string> = { lkpd: "LKPD", latihan: "Latihan", evaluasi: "Evaluasi" };
+export const TIPE_TONE: Record<AssignmentType, "purple" | "blue" | "red"> = { lkpd: "purple", latihan: "blue", evaluasi: "red" };
+export const TIPEURUT: Record<AssignmentType, number> = { lkpd: 0, latihan: 1, evaluasi: 2 };
 
 /** Kategori kalender akademik + warna badge-nya. */
 export const KATEGORI_AGENDA = ["UTS", "UAS", "Libur", "Hari Penting", "Kegiatan"] as const;

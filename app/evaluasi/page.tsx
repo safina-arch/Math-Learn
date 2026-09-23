@@ -41,25 +41,28 @@ function List() {
         <p className="text-[13.5px] font-semibold">Aturan ujian</p>
         <ul className="text-[13px] text-ink-soft list-disc pl-5 mt-1 space-y-0.5">
           <li>Timer berjalan mundur dan otomatis mengumpulkan saat habis.</li>
+          <li>Satu kesempatan — evaluasi hanya bisa dikerjakan satu kali.</li>
           <li>Jangan pindah tab / minimize — setiap pelanggaran dicatat + dilaporkan ke guru.</li>
-          <li>Satu siswa satu kiriman per evaluasi (kumpulkan ulang menimpa).</li>
+          <li>Evaluasi berstatus <b>Terkunci</b> belum bisa dikerjakan sampai dibuka admin.</li>
         </ul>
       </div>
       {items.length === 0 ? <Empty title="Belum ada evaluasi" desc={manage ? "Klik \"+ Evaluasi\" untuk membuat yang pertama." : undefined} /> : (
         <div className="space-y-3">
           {items.map((a) => {
             const s = mine.get(a.id);
+            const clickable = user?.role === "siswa";
             return (
               <div
                 key={a.id}
-                className="card card-pad hover:border-primary-200 transition-colors cursor-pointer"
-                onClick={() => router.push(`/evaluasi/${a.id}`)}
-                role="link"
+                className={`card card-pad transition-colors ${clickable ? "hover:border-primary-200 cursor-pointer" : ""}`}
+                onClick={clickable ? () => router.push(`/evaluasi/${a.id}`) : undefined}
+                role={clickable ? "link" : undefined}
               >
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge tone="red">EVALUASI</Badge>
                   <Badge>{a.durasiMenit} menit</Badge>
-                  {user?.role === "siswa" ? (s ? <Badge tone="green">Sudah dikumpulkan{s.cheatCount ? ` · ${s.cheatCount}x pelanggaran` : ""}</Badge> : <Badge tone="amber">Belum dikerjakan</Badge>) : null}
+                  {a.terkunci ? <Badge tone="gray">Terkunci</Badge> : null}
+                  {user?.role === "siswa" ? (s ? <Badge tone="green">Sudah dikerjakan</Badge> : a.terkunci ? null : <Badge tone="amber">Belum dikerjakan</Badge>) : null}
                   {manage ? <SubmissionStatus assignment={a} /> : null}
                   <span className="ml-auto text-[12.5px] text-ink-faint">{fmtDateTime(a.bukaAt)} – {fmtDateTime(a.tutupAt)}</span>
                 </div>
@@ -68,6 +71,12 @@ function List() {
                 {manage ? (
                   <div className="flex gap-2 mt-2" onClick={(e) => e.stopPropagation()}>
                     <button className="btn-ghost !py-1.5 !text-[12.5px]" onClick={() => { setEditT(a); setTOpen(true); }}>Ubah</button>
+                    {user?.role === "admin" ? (
+                      <button
+                        className={`!py-1.5 !text-[12.5px] rounded-md border px-3 font-medium ${a.terkunci ? "border-green-200 bg-green-50 text-green-700" : "border-red-200 bg-red-50 text-red-700"}`}
+                        onClick={() => upsertAssignment({ ...a, terkunci: !a.terkunci })}
+                      >{a.terkunci ? "Buka kunci" : "Kunci evaluasi"}</button>
+                    ) : null}
                     <button className="btn-danger !py-1.5 !text-[12.5px]" onClick={() => deleteAssignment(a.id)}>Hapus</button>
                   </div>
                 ) : null}

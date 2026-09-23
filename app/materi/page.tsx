@@ -49,7 +49,16 @@ function List() {
               <div className="flex items-center gap-2 mb-1.5">
                 <Badge tone="purple">{m.kelas}</Badge>
                 {m.videoUrl ? <Badge>Video</Badge> : null}
-                {(m.attachments?.length || m.fileUrl || m.fileName) ? <Badge>{m.attachments?.length ? `${m.attachments.length} file` : "PDF"}</Badge> : null}
+                {(() => {
+                  const atts = m.attachments || [];
+                  const nFile = atts.filter((f) => f.tipe !== "link").length;
+                  const nLink = atts.filter((f) => f.tipe === "link").length;
+                  const legacy = !atts.length && (m.fileUrl || m.fileName) ? 1 : 0;
+                  const total = nFile + nLink + legacy;
+                  return total ? (
+                    <Badge>{nLink && nFile ? `${nFile} file · ${nLink} tautan` : nLink ? `${nLink} tautan` : `${total} lampiran`}</Badge>
+                  ) : null;
+                })()}
               </div>
               <p className="text-[15px] font-semibold leading-snug">{m.judul}</p>
               <p className="muted mt-1 line-clamp-2">{m.ringkasan}</p>

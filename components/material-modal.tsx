@@ -24,6 +24,8 @@ export function MaterialModal({ open, initial, onClose, onSave }: { open: boolea
   const [konten, setKonten] = useState("");
   const [videoUrl, setVideoUrl] = useState("");
   const [attachments, setAttachments] = useState<MaterialAttachment[]>([]);
+  const [linkInput, setLinkInput] = useState("");
+  const [linkErr, setLinkErr] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadErr, setUploadErr] = useState<string | null>(null);
   const [wasOpen, setWasOpen] = useState(false);
@@ -31,6 +33,7 @@ export function MaterialModal({ open, initial, onClose, onSave }: { open: boolea
     setWasOpen(true);
     setJudul(initial?.judul || ""); setKelas(initial?.kelas || "VIII-A"); setRingkasan(initial?.ringkasan || ""); setKonten(initial?.konten || ""); setVideoUrl(initial?.videoUrl || "");
     setAttachments(initial?.attachments || (initial?.fileUrl || initial?.fileName ? [{ url: initial.fileUrl || "", name: initial.fileName || initial.fileUrl || "" }] : [])); setUploadErr(null);
+    setLinkInput(""); setLinkErr(null);
   }
   if (!open && wasOpen) setWasOpen(false);
   if (!open) return null;
@@ -55,6 +58,17 @@ export function MaterialModal({ open, initial, onClose, onSave }: { open: boolea
       setUploading(false);
     }
   }
+  function addLink() {
+    const url = linkInput.trim();
+    if (!url) return;
+    if (!/^https?:\/\//i.test(url)) { setLinkErr("Tautan harus diawali https://"); return; }
+    if (attachments.some((f) => f.url === url)) { setLinkErr("Tautan ini sudah ditambahkan."); return; }
+    let name = url;
+    try { name = new URL(url).hostname.replace(/^www\./, "") + new URL(url).pathname; } catch {}
+    setAttachments((current) => [...current, { url, name, tipe: "link" }]);
+    setLinkInput(""); setLinkErr(null);
+  }
+
   return (
     <Modal open onClose={onClose} title={initial ? "Ubah materi" : "Materi baru"} wide>
       <div className="space-y-3">
@@ -71,16 +85,16 @@ export function MaterialModal({ open, initial, onClose, onSave }: { open: boolea
               <label className="label !mb-0">Lampiran materi</label>
               <p className="text-[12px] text-ink-faint">PDF, PNG, JPG, atau WebP · maksimal 10 MB per file</p>
             </div>
-            {attachments.length > 0 ? <span className="text-[12px] font-medium text-primary">{attachments.length} file dipilih</span> : null}
+            {attachments.length > 0 ? <span className="text-[12px] font-medium text-primary">{attachments.length} lampiran dipilih</span> : null}
           </div>
           {attachments.length > 0 ? (
             <div className="rounded-xl border border-line bg-wash/40 p-2.5 space-y-2 mb-2.5">
               {attachments.map((file, index) => (
                 <div key={`${file.url}-${index}`} className="group flex items-center gap-3 rounded-lg border border-line bg-white px-3 py-2.5 shadow-sm">
-                  <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary-50 border border-primary-100 text-primary text-[9px] font-bold shrink-0">{attachmentType(file.name)}</span>
+                  <span className={`flex h-9 w-9 items-center justify-center rounded-lg text-[9px] font-bold shrink-0 ${file.tipe === "link" ? "bg-blue-50 border border-blue-200 text-blue-700" : "bg-primary-50 border border-primary-100 text-primary"}`}>{file.tipe === "link" ? "LINK" : attachmentType(file.name)}</span>
                   <div className="min-w-0 flex-1">
                     <a href={file.url} target="_blank" rel="noreferrer" className="block text-[13px] font-medium truncate hover:text-primary">{file.name || file.url}</a>
-                    <p className="text-[11.5px] text-ink-faint">{formatFileSize(file.size)}</p>
+                    <p className="text-[11.5px] text-ink-faint">{file.tipe === "link" ? "Tautan eksternal" : formatFileSize(file.size)}</p>
                   </div>
                   <button type="button" aria-label={`Hapus ${file.name}`} className="rounded-md px-2 py-1 text-[12px] text-ink-muted hover:bg-red-50 hover:text-red-600" onClick={() => setAttachments((current) => current.filter((_, i) => i !== index))}>Hapus</button>
                 </div>
@@ -96,6 +110,18 @@ export function MaterialModal({ open, initial, onClose, onSave }: { open: boolea
             <input type="file" multiple accept="application/pdf,image/png,image/jpeg,image/webp" className="hidden" disabled={uploading} onChange={(e) => { handleFiles(e.target.files); e.currentTarget.value = ""; }} />
             <span className="text-base leading-none">+</span>{uploading ? "File sedang diunggah…" : "Tambah satu atau beberapa file"}
           </label>
+          <div className="flex gap-2 mt-2">
+            <input
+              className="input"
+              value={linkInput}
+              onChange={(e) => { setLinkInput(e.target.value); setLinkErr(null); }}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addLink(); } }}
+              placeholder="https://… (tempel tautan, mis. Google Drive)"
+              aria-label="Tautan lampiran"
+            />
+            <button type="button" className="btn-ghost text-[13px] shrink-0" onClick={addLink}>+ Tambah tautan</button>
+          </div>
+          {linkErr ? <p role="alert" className="text-[12.5px] text-red-600 mt-1.5">{linkErr}</p> : null}
           {uploadErr ? <p role="alert" className="text-[12.5px] text-red-600 mt-1.5">{uploadErr}</p> : null}
           <p className="text-[12px] text-ink-faint mt-2">
             {isSupabaseConfigured()

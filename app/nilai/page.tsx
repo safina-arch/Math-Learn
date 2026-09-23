@@ -1,10 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import { Fragment, useState } from "react";
 import { AppShell, Guard } from "@/components/shell";
 import { Badge, Empty, PageHeader } from "@/components/ui";
 import { useStore } from "@/lib/store";
-import { fmtDateTime, STATUS_TUGAS_META, statusTugas } from "@/lib/utils";
+import { fmtDateTime, STATUS_TUGAS_META, statusTugas, TIPE_LABEL, TIPE_TONE, TIPEURUT } from "@/lib/utils";
+import type { AssignmentType } from "@/lib/types";
+
+type FilterTipe = "semua" | AssignmentType;
 
 export default function NilaiPage() {
   return (
@@ -17,20 +21,65 @@ export default function NilaiPage() {
 }
 
 function AdminGrades({ submissions, assignments, users }: { submissions: ReturnType<typeof useStore>["submissions"]; assignments: ReturnType<typeof useStore>["assignments"]; users: ReturnType<typeof useStore>["users"] }) {
+  const [filter, setFilter] = useState<FilterTipe>("semua");
+
+  const tipeOf = (sid: string): AssignmentType => assignments.find((a) => a.id === sid)?.tipe || "latihan";
+  const rows = submissions
+    .filter((s) => filter === "semua" || tipeOf(s.assignmentId) === filter)
+    .slice()
+    .sort((a, b) => TIPEURUT[tipeOf(a.assignmentId)] - TIPEURUT[tipeOf(b.assignmentId)] || b.submittedAt.localeCompare(a.submittedAt));
+  const hitung = (t: AssignmentType) => submissions.filter((s) => tipeOf(s.assignmentId) === t).length;
+  const chips: { key: FilterTipe; label: string }[] = [
+    { key: "semua", label: `Semua (${submissions.length})` },
+    ...(["latihan", "lkpd", "evaluasi"] as AssignmentType[]).map((t) => ({ key: t, label: `${TIPE_LABEL[t]} (${hitung(t)})` })),
+  ];
+
   return (
     <div className="page-wrap !px-0 !pb-0 !max-w-none">
-      <PageHeader title="Nilai siswa" desc="Pantau seluruh kiriman dan nilai siswa." right={<a href="/api/export/nilai" className="btn-ghost text-[13px]">Ekspor CSV</a>} />
-      {submissions.length === 0 ? <Empty title="Belum ada nilai siswa" desc="Nilai akan muncul setelah siswa mengumpulkan tugas atau evaluasi." /> : (
+      <PageHeader title="Nilai siswa" desc="Pantau seluruh kiriman dan nilai siswa, terkelompok per jenis tugas." right={<a href="/api/export/nilai" className="btn-ghost text-[13px]">Ekspor CSV</a>} />
+      <div className="flex flex-wrap gap-1.5 mb-3">
+        {chips.map((c) => (
+          <button
+            key={c.key}
+            className={`btn !py-1.5 !px-3 !text-[12.5px] ${filter === c.key ? "bg-ink text-white border border-ink" : "btn-ghost"}`}
+            onClick={() => setFilter(c.key)}
+          >{c.label}</button>
+        ))}
+      </div>
+      {submissions.length === 0 ? <Empty title="Belum ada nilai siswa" desc="Nilai akan muncul setelah siswa mengumpulkan tugas atau evaluasi." /> : rows.length === 0 ? (
+        <Empty title="Tidak ada nilai pada jenis ini" desc="Pilih jenis tugas lain pada filter di atas." />
+      ) : (
         <div className="card overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-[13.5px] min-w-[720px]">
-              <thead><tr className="text-left text-[12px] text-ink-muted bg-wash/50"><th className="px-4 py-2.5 font-medium">Siswa</th><th className="px-4 py-2.5 font-medium">Tugas / evaluasi</th><th className="px-4 py-2.5 font-medium">Kelas</th><th className="px-4 py-2.5 font-medium">Nilai</th><th className="px-4 py-2.5 font-medium">Status</th><th className="px-4 py-2.5 font-medium">Dikumpulkan</th></tr></thead>
-              <tbody>{submissions.map((s) => {
-                const assignment = assignments.find((a) => a.id === s.assignmentId);
-                const siswa = users.find((u) => u.id === s.siswaId);
-                const meta = STATUS_TUGAS_META[statusTugas(s)];
-                return <tr key={s.id} className="table-row"><td className="px-4 py-2.5 font-medium">{s.siswaNama}<span className="block text-[12px] text-ink-muted">{siswa?.nisn ? `NISN ${siswa.nisn}` : siswa?.email || s.siswaId}</span></td><td className="px-4 py-2.5">{assignment?.judul || s.assignmentId}</td><td className="px-4 py-2.5">{s.kelas}</td><td className="px-4 py-2.5 font-semibold">{s.nilai ?? "—"}</td><td className="px-4 py-2.5"><Badge tone={meta.tone}>{meta.label}</Badge></td><td className="px-4 py-2.5 text-ink-muted">{fmtDateTime(s.submittedAt)}</td></tr>;
-              })}</tbody>
+            <table className="w-full text-[13.5px] min-w-[760px]">
+              <thead><tr className="text-left text-[12px] text-ink-muted bg-wash/50"><th className="px-4 py-2.5 font-medium">Siswa</th><th className="px-4 py-2.5 font-medium">Jenis</th><th className="px-4 py-2.5 font-medium">Tugas / evaluasi</th><th className="px-4 py-2.5 font-medium">Kelas</th><th className="px-4 py-2.5 font-medium">Nilai</th><th className="px-4 py-2.5 font-medium">Status</th><th className="px-4 py-2.5 font-medium">Dikumpulkan</th></tr></thead>
+              <tbody>{(() => {
+                let lastTipe: AssignmentType | null = null;
+                return rows.map((s) => {
+                  const assignment = assignments.find((a) => a.id === s.assignmentId);
+                  const siswa = users.find((u) => u.id === s.siswaId);
+                  const meta = STATUS_TUGAS_META[statusTugas(s)];
+                  const tipe = tipeOf(s.assignmentId);
+                  const showHead = filter === "semua" && tipe !== lastTipe;
+                  lastTipe = tipe;
+                  return (
+                    <Fragment key={s.id}>
+                      {showHead ? (
+                        <tr><td colSpan={7} className="px-4 pt-3 pb-1 text-[12px] font-semibold uppercase tracking-wide text-ink-faint bg-wash/40">{TIPE_LABEL[tipe]}</td></tr>
+                      ) : null}
+                      <tr className="table-row">
+                        <td className="px-4 py-2.5 font-medium">{s.siswaNama}<span className="block text-[12px] text-ink-muted">{siswa?.nisn ? `NISN ${siswa.nisn}` : siswa?.email || s.siswaId}</span></td>
+                        <td className="px-4 py-2.5"><Badge tone={TIPE_TONE[tipe]}>{TIPE_LABEL[tipe]}</Badge></td>
+                        <td className="px-4 py-2.5">{assignment?.judul || s.assignmentId}</td>
+                        <td className="px-4 py-2.5">{s.kelas}</td>
+                        <td className="px-4 py-2.5 font-semibold">{s.nilai ?? "—"}</td>
+                        <td className="px-4 py-2.5"><Badge tone={meta.tone}>{meta.label}</Badge></td>
+                        <td className="px-4 py-2.5 text-ink-muted">{fmtDateTime(s.submittedAt)}</td>
+                      </tr>
+                    </Fragment>
+                  );
+                });
+              })()}</tbody>
             </table>
           </div>
         </div>
@@ -78,7 +127,6 @@ function Content() {
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <span className="text-[26px] font-bold">{last.nilai}</span>
-            {last.cheatCount > 0 ? <Badge tone="red">{last.cheatCount}x pindah tab</Badge> : null}
           </div>
           {last.feedbackGuru ? <p className="mt-2 text-[13.5px] bg-wash border border-line rounded-lg px-3 py-2"><b>Catatan guru:</b> {last.feedbackGuru}</p> : null}
           {Object.keys(last.feedbackAi).length ? (
