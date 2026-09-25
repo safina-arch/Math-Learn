@@ -1,13 +1,13 @@
 # Plan Revisi Math-Learn — Status Eksekusi
 
 Tanggal: 23–25 Sep 2026 · Proyek: `mathlearn/` (Next.js 14 + Supabase + localStorage fallback)
-**Status: Gelombang 1–4 SELESAI & LIVE (commit terakhir `2fa1b53`) · Gelombang 5 (8 revisi) — kode selesai, build & deploy menyusul**
+**Status: Gelombang 1–4 SELESAI & LIVE · Gelombang 5 SELESAI & LIVE (commit `0b3e75d`, deploy `dpl_CUWg4k1oY9gfZcb4qikiTdFJjAGc` READY, verifikasi produksi PASS)**
 
 Legenda: ✅ selesai & terverifikasi · ⏳ menunggu kredensial (Supabase & Vercel token)
 
 ---
 
-## Gelombang 5 — 8 revisi (25 Sep 2026) ✅ kode selesai (belum build/deploy)
+## Gelombang 5 — 8 revisi (25 Sep 2026) ✅ LIVE (commit `0b3e75d`, deploy `dpl_CUWg4k1oY9gfZcb4qikiTdFJjAGc` READY, verifikasi produksi PASS)
 
 | # | Revisi | Implementasi |
 |---|---|---|
