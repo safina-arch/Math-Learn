@@ -1,9 +1,24 @@
 # Plan Revisi Math-Learn — Status Eksekusi
 
 Tanggal: 23–25 Sep 2026 · Proyek: `mathlearn/` (Next.js 14 + Supabase + localStorage fallback)
-**Status: Gelombang 1 SELESAI & LIVE · Gelombang 2 SELESAI & LIVE (commit `947f086`) · Gelombang 3 SELESAI & LIVE (commit `8b48218`) · Gelombang 4 SELESAI & LIVE (commit `2fa1b53`, deploy `dpl_G1DMzhU1aYRKnMQh5n7t3UCgVN58` READY, verifikasi produksi PASS)**
+**Status: Gelombang 1–4 SELESAI & LIVE (commit terakhir `2fa1b53`) · Gelombang 5 (8 revisi) — kode selesai, build & deploy menyusul**
 
 Legenda: ✅ selesai & terverifikasi · ⏳ menunggu kredensial (Supabase & Vercel token)
+
+---
+
+## Gelombang 5 — 8 revisi (25 Sep 2026) ✅ kode selesai (belum build/deploy)
+
+| # | Revisi | Implementasi |
+|---|---|---|
+| 1 | Tidak tampilkan "Belum mengerjakan" di hasil siswa (guru & admin) | Stat **Belum mengerjakan** dihapus dari `/periksa` (grid jadi 2 statistik: Belum diperiksa & Sudah diperiksa); badge per baris hanya "Belum diperiksa"/"Sudah diperiksa" |
+| 2 | Penyortiran hasil siswa: bedakan LKPD/latihan/evaluasi + urut alfabet nama | Urutan primer = jenis tugas (Latihan → LKPD → Evaluasi) selalu dijaga di `/periksa` & AdminGrades `/nilai` — kelompok header per jenis selalu tampil (berhitung "n kiriman/n data") meski user mengklik sorting; sekunder = kolom yang diklik, **default alfabet nama siswa** (A–Z); kolom "Jenis" jadi statis (bukan tombol sort) |
+| 3 | Sidebar "Laporan kecurangan" setelah hasil siswa; laporan dihapus dari hasil siswa | Halaman baru **`/laporan`** (Guard guru & admin) berisi daftar peserta + modal detail (jenis, menit kejadian, soal, evaluasi, waktu) — dipindah dari `/periksa`; nav guru: setelah **Hasil siswa**, nav admin: setelah **Nilai siswa**; blok "Laporan kecurangan" + badge "Nx tab" dihapus dari `/periksa` |
+| 4 | "Tandai dibaca" notifikasi belum berfungsi | Akar masalah: `markAllRead` hanya mencocokkan `userId === user.id`/"all", padahal siaran memakai `all-siswa`/`all-guru` — sekarang semua notifikasi yang terlihat user ikut ditandai terbaca (badge lonceng ikut hilang) |
+| 5 | Menu export XLSX di hasil siswa | Komponen `components/export-menu.tsx`: tombol **Ekspor hasil ▾** membuka panel pilihan jenis tugas + tombol **Unduh CSV** / **Unduh XLSX**; dipasang di `/periksa` (guru & admin) dan `/nilai` (admin) |
+| 6 | Hilangkan tulisan "Evaluasi berstatus Terkunci bisa juga dikunci manual oleh admin kapan saja." | Dihapus dari kartu aturan ujian `/evaluasi` |
+| 7 | Export CSV & XLSX berfungsi, data sesuai hasil siswa, bisa pilih jenis tugas | Modul baru `lib/export.ts` (SheetJS `xlsx@0.18.5`): `dataHasilSiswa()` menghasilkan kolom **No, Nama Siswa, Kelas, Jenis Tugas, Tugas/Evaluasi, Status, Nilai, Dikumpulkan** dengan urutan sama persis seperti halaman (per jenis lalu alfabet); filter Semua/Latihan/LKPD/Evaluasi; CSV UTF-8 BOM + quoting aman; XLSX dengan lebar kolom rapi; nama file `hasil-siswa-{jenis}.csv/.xlsx`; tombol "Ekspor CSV" lama (yang menampilkan data dummy) diganti menu ini |
+| 8 | Siswa: hilangkan "Unduh CSV saya" | Tombol `right` di PageHeader `/nilai` versi siswa dihapus |
 
 ---
 

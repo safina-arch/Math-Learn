@@ -52,7 +52,6 @@ function List() {
           <li>Satu kesempatan — evaluasi hanya bisa dikerjakan satu kali.</li>
           <li>Jangan pindah tab / minimize — setiap pelanggaran dicatat + dilaporkan ke guru.</li>
           <li>Evaluasi <b>otomatis terbuka &amp; terkunci</b> sesuai jadwal waktu yang ditentukan guru/admin.</li>
-          <li>Evaluasi berstatus <b>Terkunci</b> bisa juga dikunci manual oleh admin kapan saja.</li>
         </ul>
       </div>
       {items.length === 0 ? <Empty title="Belum ada evaluasi" desc={manage ? "Klik \"+ Evaluasi\" untuk membuat yang pertama." : undefined} /> : (

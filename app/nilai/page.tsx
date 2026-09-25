@@ -3,13 +3,14 @@
 import Link from "next/link";
 import { Fragment, useState } from "react";
 import { AppShell, Guard } from "@/components/shell";
+import { ExportMenu } from "@/components/export-menu";
 import { Badge, Empty, PageHeader } from "@/components/ui";
 import { useStore } from "@/lib/store";
 import { fmtDateTime, STATUS_TUGAS_META, statusTugas, TIPE_LABEL, TIPE_TONE, TIPEURUT } from "@/lib/utils";
 import type { AssignmentType } from "@/lib/types";
 
 type FilterTipe = "semua" | AssignmentType;
-type SortKey = "siswa" | "tipe" | "tugas" | "kelas" | "nilai" | "waktu";
+type SortKey = "siswa" | "tugas" | "kelas" | "nilai" | "waktu";
 
 export default function NilaiPage() {
   return (
@@ -23,14 +24,13 @@ export default function NilaiPage() {
 
 function AdminGrades({ submissions, assignments, users }: { submissions: ReturnType<typeof useStore>["submissions"]; assignments: ReturnType<typeof useStore>["assignments"]; users: ReturnType<typeof useStore>["users"] }) {
   const [filter, setFilter] = useState<FilterTipe>("semua");
-  /** Sorting manual per kolom; null = tampilan baku (dikelompokkan per jenis tugas). */
+  /** Sorting kolom — kelompok jenis tugas (latihan/LKPD/evaluasi) selalu dijaga utuh. */
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 } | null>(null);
 
   const tipeOf = (sid: string): AssignmentType => assignments.find((a) => a.id === sid)?.tipe || "latihan";
   const judulDari = (sid: string) => (assignments.find((a) => a.id === sid)?.judul || sid).toLowerCase();
   const kunciSort = (s: (typeof submissions)[number], key: SortKey): string | number => {
     if (key === "siswa") return s.siswaNama.toLowerCase();
-    if (key === "tipe") return TIPEURUT[tipeOf(s.assignmentId)];
     if (key === "tugas") return judulDari(s.assignmentId);
     if (key === "kelas") return s.kelas.toLowerCase();
     if (key === "nilai") return s.nilai ?? -1;
@@ -40,14 +40,18 @@ function AdminGrades({ submissions, assignments, users }: { submissions: ReturnT
     .filter((s) => filter === "semua" || tipeOf(s.assignmentId) === filter)
     .slice()
     .sort((a, b) => {
+      // Primer: jenis tugas — agar hasil LKPD, latihan, dan evaluasi tidak tercampur.
+      const t = TIPEURUT[tipeOf(a.assignmentId)] - TIPEURUT[tipeOf(b.assignmentId)];
+      if (t) return t;
+      // Sekunder: kolom yang diklik (default: nama siswa alfabet).
       if (sort) {
         const va = kunciSort(a, sort.key);
         const vb = kunciSort(b, sort.key);
         if (va < vb) return -sort.dir;
         if (va > vb) return sort.dir;
-        return b.submittedAt.localeCompare(a.submittedAt);
+        return a.siswaNama.localeCompare(b.siswaNama, "id");
       }
-      return TIPEURUT[tipeOf(a.assignmentId)] - TIPEURUT[tipeOf(b.assignmentId)] || b.submittedAt.localeCompare(a.submittedAt);
+      return a.siswaNama.localeCompare(b.siswaNama, "id") || b.submittedAt.localeCompare(a.submittedAt);
     });
   const klikSort = (key: SortKey) => setSort((p) => (p?.key === key ? { key, dir: p.dir === 1 ? -1 : 1 } : { key, dir: 1 }));
   const panah = (key: SortKey) => (sort?.key === key ? (sort.dir === 1 ? "▲" : "▼") : "↕");
@@ -66,7 +70,7 @@ function AdminGrades({ submissions, assignments, users }: { submissions: ReturnT
 
   return (
     <div className="page-wrap !px-0 !pb-0 !max-w-none">
-      <PageHeader title="Nilai siswa" desc="Pantau seluruh kiriman dan nilai siswa, terkelompok per jenis tugas." right={<a href="/api/export/nilai" className="btn-ghost text-[13px]">Ekspor CSV</a>} />
+      <PageHeader title="Nilai siswa" desc="Pantau seluruh kiriman dan nilai siswa, terkelompok per jenis tugas." right={<ExportMenu submissions={submissions} assignments={assignments} users={users} />} />
       <div className="flex flex-wrap items-center gap-1.5 mb-3">
         {chips.map((c) => (
           <button
@@ -75,7 +79,9 @@ function AdminGrades({ submissions, assignments, users }: { submissions: ReturnT
             onClick={() => setFilter(c.key)}
           >{c.label}</button>
         ))}
-        <span className="text-[12px] text-ink-faint ml-auto">Klik judul kolom untuk mengurutkan {sort ? <button className="text-primary font-medium" onClick={() => setSort(null)}>reset</button> : null}</span>
+        <span className="text-[12px] text-ink-faint ml-auto">
+          Urut: per jenis tugas → alfabet nama siswa {sort ? <button className="text-primary font-medium" onClick={() => setSort(null)}>reset</button> : null}
+        </span>
       </div>
       {submissions.length === 0 ? <Empty title="Belum ada nilai siswa" desc="Nilai akan muncul setelah siswa mengumpulkan tugas atau evaluasi." /> : rows.length === 0 ? (
         <Empty title="Tidak ada nilai pada jenis ini" desc="Pilih jenis tugas lain pada filter di atas." />
@@ -83,7 +89,7 @@ function AdminGrades({ submissions, assignments, users }: { submissions: ReturnT
         <div className="card overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-[13.5px] min-w-[760px]">
-              <thead><tr className="text-left text-[12px] text-ink-muted bg-wash/50">{th("siswa", "Siswa")}{th("tipe", "Jenis")}{th("tugas", "Tugas / evaluasi")}{th("kelas", "Kelas")}{th("nilai", "Nilai")}<th className="px-4 py-2.5 font-medium">Status</th>{th("waktu", "Dikumpulkan")}</tr></thead>
+              <thead><tr className="text-left text-[12px] text-ink-muted bg-wash/50">{th("siswa", "Siswa")}<th className="px-4 py-2.5 font-medium">Jenis</th>{th("tugas", "Tugas / evaluasi")}{th("kelas", "Kelas")}{th("nilai", "Nilai")}<th className="px-4 py-2.5 font-medium">Status</th>{th("waktu", "Dikumpulkan")}</tr></thead>
               <tbody>{(() => {
                 let lastTipe: AssignmentType | null = null;
                 return rows.map((s) => {
@@ -91,12 +97,13 @@ function AdminGrades({ submissions, assignments, users }: { submissions: ReturnT
                   const siswa = users.find((u) => u.id === s.siswaId);
                   const meta = STATUS_TUGAS_META[statusTugas(s)];
                   const tipe = tipeOf(s.assignmentId);
-                  const showHead = !sort && filter === "semua" && tipe !== lastTipe;
+                  // Kelompok jenis tugas selalu ditampilkan agar LKPD, latihan, dan evaluasi tidak tercampur.
+                  const showHead = filter === "semua" && tipe !== lastTipe;
                   lastTipe = tipe;
                   return (
                     <Fragment key={s.id}>
                       {showHead ? (
-                        <tr><td colSpan={7} className="px-4 pt-3 pb-1 text-[12px] font-semibold uppercase tracking-wide text-ink-faint bg-wash/40">{TIPE_LABEL[tipe]}</td></tr>
+                        <tr><td colSpan={7} className="px-4 pt-3 pb-1 text-[12px] font-semibold uppercase tracking-wide text-ink-faint bg-wash/40">{TIPE_LABEL[tipe]} · {rows.filter((x) => tipeOf(x.assignmentId) === tipe).length} data</td></tr>
                       ) : null}
                       <tr className="table-row">
                         <td className="px-4 py-2.5 font-medium">{s.siswaNama}<span className="block text-[12px] text-ink-muted">{siswa?.nisn ? `NISN ${siswa.nisn}` : siswa?.email || s.siswaId}</span></td>
@@ -134,7 +141,6 @@ function Content() {
       <PageHeader
         title="Nilai & umpan balik"
         desc="Skor terakhir yang sudah diperiksa guru tampil di sini. Kiriman yang belum diperiksa tidak ditampilkan."
-        right={<a href="/api/export/nilai" className="btn-ghost text-[13px]">Unduh CSV saya</a>}
       />
       <div className="grid sm:grid-cols-2 gap-3 mb-3">
         <div className="card card-pad">

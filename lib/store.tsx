@@ -294,7 +294,16 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         return next;
       }),
       markAllRead: (userId) => setNotifications((p) => {
-        const next = p.map((n) => (n.userId === userId || n.userId === "all" ? { ...n, dibaca: true } : n));
+        // Tandai semua notifikasi yang bisa dilihat user ini — termasuk siaran
+        // "all", "all-siswa", dan "all-guru" yang sebelumnya tidak ikut tercentang.
+        const next = p.map((n) =>
+          n.userId === userId ||
+          n.userId === "all" ||
+          (effective?.role === "siswa" && n.userId === "all-siswa") ||
+          (effective?.role === "guru" && n.userId === "all-guru")
+            ? { ...n, dibaca: true }
+            : n,
+        );
         void persistShared("notifications", next, effective?.role);
         return next;
       }),

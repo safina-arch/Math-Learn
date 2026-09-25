@@ -2,13 +2,14 @@
 
 import { Fragment, useState } from "react";
 import { AppShell, Guard } from "@/components/shell";
+import { ExportMenu } from "@/components/export-menu";
 import { Badge, Empty, Modal, PageHeader, Stat } from "@/components/ui";
 import { useStore } from "@/lib/store";
-import { cheatLabel, cheatTone, fmtDateTime, STATUS_TUGAS_META, statusRingkasan, statusTugas, TIPE_LABEL, TIPE_TONE, TIPEURUT } from "@/lib/utils";
+import { fmtDateTime, STATUS_TUGAS_META, statusRingkasan, statusTugas, TIPE_LABEL, TIPE_TONE, TIPEURUT } from "@/lib/utils";
 import type { AssignmentType } from "@/lib/types";
 
 type FilterTipe = "semua" | AssignmentType;
-type SortKey = "siswa" | "tipe" | "tugas" | "nilai" | "waktu";
+type SortKey = "siswa" | "tugas" | "nilai" | "waktu";
 
 export default function PeriksaPage() {
   return (
@@ -21,26 +22,24 @@ export default function PeriksaPage() {
 }
 
 function Content() {
-  const { submissions, assignments, users, updateSubmission, addNotification, cheatLogs } = useStore();
+  const { submissions, assignments, users, updateSubmission, addNotification } = useStore();
   const [openId, setOpenId] = useState<string | null>(null);
   const [nilai, setNilai] = useState("");
   const [catatan, setCatatan] = useState("");
   const [aiEdits, setAiEdits] = useState<Record<string, { skor: number; feedback: string }>>({});
-  const [cheatSiswa, setCheatSiswa] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterTipe>("semua");
-  /** Sorting manual per kolom; null = tampilan baku (dikelompokkan per jenis tugas). */
+  /** Sorting kolom — kelompok jenis tugas (latihan/LKPD/evaluasi) selalu dijaga utuh. */
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 } | null>(null);
 
   const current = submissions.find((s) => s.id === openId);
   const currentAssign = current ? assignments.find((a) => a.id === current.assignmentId) : null;
   const ringkas = statusRingkasan(assignments, submissions, users);
 
-  // Kiriman terkelompok per jenis tugas (latihan, LKPD, evaluasi), terbaru di tiap kelompok.
+  // Urutan baku: kelompok per jenis tugas (Latihan → LKPD → Evaluasi), dalam kelompok urut alfabet nama.
   const tipeOf = (sid: string): AssignmentType => assignments.find((x) => x.id === sid)?.tipe || "latihan";
   const nilaiDari = (sid: string) => assignments.find((x) => x.id === sid);
   const kunciSort = (s: (typeof submissions)[number], key: SortKey): string | number => {
     if (key === "siswa") return s.siswaNama.toLowerCase();
-    if (key === "tipe") return TIPEURUT[tipeOf(s.assignmentId)];
     if (key === "tugas") return (nilaiDari(s.assignmentId)?.judul || "").toLowerCase();
     if (key === "nilai") return s.nilai ?? -1;
     return s.submittedAt;
@@ -49,14 +48,18 @@ function Content() {
     .filter((s) => filter === "semua" || tipeOf(s.assignmentId) === filter)
     .slice()
     .sort((a, b) => {
+      // Primer: jenis tugas — agar hasil LKPD, latihan, dan evaluasi tidak tercampur.
+      const t = TIPEURUT[tipeOf(a.assignmentId)] - TIPEURUT[tipeOf(b.assignmentId)];
+      if (t) return t;
+      // Sekunder: kolom yang diklik user (default: nama siswa alfabet).
       if (sort) {
         const va = kunciSort(a, sort.key);
         const vb = kunciSort(b, sort.key);
         if (va < vb) return -sort.dir;
         if (va > vb) return sort.dir;
-        return b.submittedAt.localeCompare(a.submittedAt);
+        return a.siswaNama.localeCompare(b.siswaNama, "id");
       }
-      return TIPEURUT[tipeOf(a.assignmentId)] - TIPEURUT[tipeOf(b.assignmentId)] || b.submittedAt.localeCompare(a.submittedAt);
+      return a.siswaNama.localeCompare(b.siswaNama, "id") || b.submittedAt.localeCompare(a.submittedAt);
     });
   const klikSort = (key: SortKey) => setSort((p) => (p?.key === key ? { key, dir: p.dir === 1 ? -1 : 1 } : { key, dir: 1 }));
   const panah = (key: SortKey) => (sort?.key === key ? (sort.dir === 1 ? "▲" : "▼") : "↕");
@@ -72,16 +75,6 @@ function Content() {
     { key: "semua", label: `Semua (${submissions.length})` },
     ...(["latihan", "lkpd", "evaluasi"] as AssignmentType[]).map((t) => ({ key: t, label: `${TIPE_LABEL[t]} (${hitungTipe(t)})` })),
   ];
-
-  // Kelompokkan laporan kecurangan per peserta (foto = menambahkan foto, bukan pelanggaran).
-  const cheatBySiswa = new Map<string, { nama: string; logs: typeof cheatLogs }>();
-  for (const c of cheatLogs) {
-    const g = cheatBySiswa.get(c.siswaId) || { nama: c.siswaNama, logs: [] as typeof cheatLogs };
-    g.logs.push(c);
-    cheatBySiswa.set(c.siswaId, g);
-  }
-  const pesertaCheat = Array.from(cheatBySiswa.entries());
-  const detailCheat = cheatSiswa ? cheatBySiswa.get(cheatSiswa) : undefined;
 
   function open(sid: string) {
     const s = submissions.find((x) => x.id === sid);
@@ -112,10 +105,9 @@ function Content() {
       <PageHeader
         title="Periksa kiriman"
         desc="Setujui draf AI, sunting umpan balik, atau override nilai sebelum diterbitkan ke siswa."
-        right={<a href="/api/export/nilai" className="btn-ghost text-[13px]">Ekspor CSV</a>}
+        right={<ExportMenu submissions={submissions} assignments={assignments} users={users} />}
       />
-      <div className="grid sm:grid-cols-3 gap-3 mb-3">
-        <Stat label="Belum mengerjakan" value={String(ringkas.belum)} sub="siswa × tugas tanpa kiriman" />
+      <div className="grid sm:grid-cols-2 gap-3 mb-3">
         <Stat label="Belum diperiksa" value={String(ringkas.blm)} sub="kiriman menunggu pemeriksaan" />
         <Stat label="Sudah diperiksa" value={String(ringkas.sudah)} sub="nilai sudah diterbitkan" />
       </div>
@@ -127,7 +119,9 @@ function Content() {
             onClick={() => setFilter(c.key)}
           >{c.label}</button>
         ))}
-        <span className="text-[12px] text-ink-faint ml-auto">Klik judul kolom untuk mengurutkan {sort ? <button className="text-primary font-medium" onClick={() => setSort(null)}>reset</button> : null}</span>
+        <span className="text-[12px] text-ink-faint ml-auto">
+          Urut: per jenis tugas → alfabet nama siswa {sort ? <button className="text-primary font-medium" onClick={() => setSort(null)}>reset</button> : null}
+        </span>
       </div>
       {submissions.length === 0 ? <Empty title="Belum ada kiriman" desc="Kiriman siswa dari LKPD, latihan, dan evaluasi akan muncul di sini." /> : urutKiriman.length === 0 ? (
         <Empty title="Tidak ada kiriman pada jenis ini" desc="Pilih jenis tugas lain pada filter di atas." />
@@ -137,7 +131,7 @@ function Content() {
             <table className="w-full text-[13.5px] min-w-[680px]">
               <thead><tr className="text-left text-[12px] text-ink-muted bg-wash/50">
                 {th("siswa", "Siswa")}
-                {th("tipe", "Jenis")}
+                <th className="px-4 py-2.5 font-medium">Jenis</th>
                 {th("tugas", "Tugas")}
                 <th className="px-4 py-2.5 font-medium">Status</th>
                 {th("nilai", "Skor")}
@@ -151,15 +145,16 @@ function Content() {
                     const a = assignments.find((x) => x.id === s.assignmentId);
                     const tipe = tipeOf(s.assignmentId);
                     const meta = STATUS_TUGAS_META[statusTugas(s)];
-                    const showHead = !sort && filter === "semua" && tipe !== lastTipe;
+                    // Kelompok jenis tugas selalu ditampilkan agar LKPD, latihan, dan evaluasi tidak tercampur.
+                    const showHead = filter === "semua" && tipe !== lastTipe;
                     lastTipe = tipe;
                     return (
                       <Fragment key={s.id}>
                         {showHead ? (
-                          <tr><td colSpan={7} className="px-4 pt-3 pb-1 text-[12px] font-semibold uppercase tracking-wide text-ink-faint bg-wash/40">{TIPE_LABEL[tipe]}</td></tr>
+                          <tr><td colSpan={7} className="px-4 pt-3 pb-1 text-[12px] font-semibold uppercase tracking-wide text-ink-faint bg-wash/40">{TIPE_LABEL[tipe]} · {urutKiriman.filter((x) => tipeOf(x.assignmentId) === tipe).length} kiriman</td></tr>
                         ) : null}
                         <tr className="table-row">
-                          <td className="px-4 py-2.5"><b>{s.siswaNama}</b><span className="block text-[12px] text-ink-muted">{s.kelas}{s.cheatCount ? ` · ${s.cheatCount}x tab` : ""}</span></td>
+                          <td className="px-4 py-2.5"><b>{s.siswaNama}</b><span className="block text-[12px] text-ink-muted">{s.kelas}</span></td>
                           <td className="px-4 py-2.5"><Badge tone={TIPE_TONE[tipe]}>{TIPE_LABEL[tipe]}</Badge></td>
                           <td className="px-4 py-2.5">{a?.judul || "—"}</td>
                           <td className="px-4 py-2.5"><Badge tone={meta.tone}>{meta.label}</Badge></td>
@@ -177,50 +172,7 @@ function Content() {
         </div>
       )}
 
-      <div className="card overflow-hidden mt-3">
-        <div className="px-4 py-3 border-b border-line">
-          <p className="h2">Laporan kecurangan ({cheatLogs.length} kejadian · {pesertaCheat.length} peserta)</p>
-          <p className="muted mt-0.5">Klik nama peserta untuk melihat detail: jenis kecurangan, menit kejadian, dan nomor soal terindikasi.</p>
-        </div>
-        {pesertaCheat.length === 0 ? <p className="muted p-4">Belum ada pelanggaran.</p> : (
-          <div className="divide-y divide-line">
-            {pesertaCheat.map(([sid, g]) => (
-              <div key={sid} className="px-4 py-2.5 flex items-center gap-3">
-                <span className="h-8 w-8 rounded-full bg-wash border border-line flex items-center justify-center text-[12px] font-semibold text-ink-soft shrink-0">{g.nama.slice(0, 1).toUpperCase()}</span>
-                <div className="min-w-0 flex-1">
-                  <p className="text-[14px] font-medium truncate">{g.nama}</p>
-                  <p className="text-[12px] text-ink-muted">{g.logs.length} kejadian tercatat</p>
-                </div>
-                <button className="btn-ghost !py-1.5 !text-[12.5px]" onClick={() => setCheatSiswa(sid)}>Lihat detail</button>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <Modal open={!!detailCheat} onClose={() => setCheatSiswa(null)} title={`Detail kecurangan — ${detailCheat?.nama || ""}`} wide>
-        {detailCheat ? (
-          <div className="overflow-x-auto">
-            <table className="w-full text-[13px] min-w-[560px]">
-              <thead><tr className="text-left text-[12px] text-ink-muted bg-wash/50"><th className="px-3 py-2.5 font-medium">Jenis</th><th className="px-3 py-2.5 font-medium">Menit kejadian</th><th className="px-3 py-2.5 font-medium">Soal</th><th className="px-3 py-2.5 font-medium">Evaluasi</th><th className="px-3 py-2.5 font-medium">Waktu</th></tr></thead>
-              <tbody>
-                {detailCheat.logs.map((c) => {
-                  const evaluation = assignments.find((a) => a.id === c.evaluationId);
-                  return (
-                    <tr key={c.id} className="table-row">
-                      <td className="px-3 py-2.5"><Badge tone={cheatTone(c.tipe)}>{cheatLabel(c.tipe)}</Badge></td>
-                      <td className="px-3 py-2.5 tabular-nums">{c.menit != null ? `Menit ke-${c.menit}` : "—"}</td>
-                      <td className="px-3 py-2.5">{c.soal ? `Soal ${c.soal}` : "—"}</td>
-                      <td className="px-3 py-2.5">{evaluation?.judul || "Evaluasi"}</td>
-                      <td className="px-3 py-2.5 text-ink-muted">{fmtDateTime(c.timestamp)}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        ) : null}
-      </Modal>
+      {/* Laporan kecurangan dipindah ke halaman sendiri: menu "Laporan kecurangan" pada sidebar. */}
 
       <Modal open={!!current} onClose={() => setOpenId(null)} title={`Periksa — ${current?.siswaNama}`} wide>
         {current && currentAssign ? (
