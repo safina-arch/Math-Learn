@@ -1,13 +1,28 @@
 # Plan Revisi Math-Learn — Status Eksekusi
 
-Tanggal: 23–24 Sep 2026 · Proyek: `mathlearn/` (Next.js 14 + Supabase + localStorage fallback)
-**Status: Gelombang 1 SELESAI & LIVE · Gelombang 2 SELESAI & LIVE (commit `947f086`) · Gelombang 3 (12 revisi) — kode selesai, build & deploy menyusul**
+Tanggal: 23–25 Sep 2026 · Proyek: `mathlearn/` (Next.js 14 + Supabase + localStorage fallback)
+**Status: Gelombang 1 SELESAI & LIVE · Gelombang 2 SELESAI & LIVE (commit `947f086`) · Gelombang 3 SELESAI & LIVE (commit `8b48218`) · Gelombang 4 (8 revisi) — kode selesai, build & deploy menyusul**
 
 Legenda: ✅ selesai & terverifikasi · ⏳ menunggu kredensial (Supabase & Vercel token)
 
 ---
 
-## Gelombang 3 — 12 revisi (24 Sep 2026) ✅ kode selesai (belum build/deploy)
+## Gelombang 4 — 8 revisi (25 Sep 2026) ✅ kode selesai (belum build/deploy)
+
+| # | Revisi | Implementasi |
+|---|---|---|
+| 1 | Fitur sorting pada hasil kerja siswa di admin & guru | Header kolom bisa diklik (Siswa, Jenis, Tugas, Kelas, Skor/Nilai, Dikumpulkan) dengan panah ▲/▼ + tombol reset di AdminGrades `/nilai` dan `/periksa`; klik berulang membalik arah; kelompok header per jenis disembunyikan saat sorting manual aktif |
+| 2 | Warning bila ada kolom belum diisi saat membuat jadwal/pengumuman (kecuali opsional) | `/pengumuman` (guru & admin) & form pertemuan/agenda `/jadwal` (admin): tombol simpan selalu aktif, saat kolom wajib kosong muncul peringatan merah `role="alert"` berisi daftar kolom yang belum diisi + input kosong ditandai border merah; pesan menyebut kolom opsional boleh dikosongkan |
+| 3 | Opsi membuat jadwal sesuai pilihan hari & jam | Form pertemuan `/jadwal`: toggle **"📅 Tanggal tertentu"** vs **"🔁 Hari & jam (berulang)"**; mode hari memakai select `HARI` (Senin–Minggu) + jam mulai/selesai, disimpan tanpa `tanggal` (jadwal mingguan) dan tampil di timeline sebagai "Setiap {hari}" |
+| 4 | Agar refresh tidak mengeluarkan akun | Akar masalah: race — efek `Guard` redirect ke `/login` sebelum store selesai load sesi dari localStorage. Ditambahkan flag `ready` di `lib/store.tsx`; `Guard` (`components/shell.tsx`) & `/dashboard` hanya redirect **setelah** `ready === true`; halaman "Memuat…" selama hydrate |
+| 5 | Auto buka & kunci evaluasi pada jam yang ditentukan | Helper `jendelaEvaluasi()` + `JENDELA_META` di `lib/utils.ts` (kunci-manual / belum-buka / buka / lewat-waktu) berbasis `bukaAt`/`tutupAt`; input **Dibuka otomatis pada** & **Dikunci otomatis pada** (`datetime-local`) di TaskModal; badge status otomatis + tick 30 detik di `/evaluasi` list; layar awal `/evaluasi/[id]` (BELUM DIBUKA / DITUTUP / TERKUNCI) & tick 30 detik; validasi tutup > buka; dashboard mengecualikan evaluasi terkunci/lewat waktu |
+| 6 | Waktu jangan minus | Input durasi evaluasi `min=1 max=600` + clamp (negatif/nol → 1, kosong → default saat blur); input bobot `min=0 max=100` + clamp; skor AI/nilai akhir di `/periksa` sudah `Math.min(100, Math.max(0, …))` |
+| 7 | Bobot nilai latsol, LKPD, evaluasi maksimal 100 | Indikator **Total bobot: X/100** di TaskModal: hijau normal, amber bila < 100 ("nilai maksimal hanya X"), merah bila > 100 (simpan diblokir); tombol "Distribusikan rata 100"; bila bobot masih 0 semua, dibagi rata otomatis saat simpan; `blankQ()` bobot awal 0 |
+| 8 | Semua type file materi tidak usah pratinjau; nama file bisa dicustom | `app/materi/[id]`: seluruh blok pratinjau (PDF/gambar/video/tautan) dihapus → hanya daftar kartu lampiran (ikon, nama, deskripsi, tombol Buka/Buka tautan); `material-modal.tsx`: nama tiap lampiran berupa input yang bisa diedit (nama tampilan inilah yang dilihat siswa) + link "Buka ↗" |
+
+---
+
+## Gelombang 3 — 12 revisi (24 Sep 2026) ✅ LIVE (commit `8b48218`, deploy `dpl_6URGQnipH26KBEcm94Gabfm2rJX3` READY, verifikasi produksi PASS)
 
 | # | Revisi | Implementasi |
 |---|---|---|

@@ -158,12 +158,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 }
 
 export function Guard({ allow, children }: { allow: string[]; children: React.ReactNode }) {
-  const { user } = useStore();
+  const { user, ready } = useStore();
   const router = useRouter();
   React.useEffect(() => {
+    // Tunggu sesi selesai dimuat dari penyimpanan lokal agar refresh tidak menganggap user keluar.
+    if (!ready) return;
     if (!user) router.replace("/login");
     else if (!allow.includes(user.role)) router.replace("/dashboard");
-  }, [user, allow, router]);
+  }, [ready, user, allow, router]);
+  if (!ready) return <div className="page-wrap pt-16"><p className="muted">Memuat…</p></div>;
   if (!user || !allow.includes(user.role)) return <div className="page-wrap pt-16"><p className="muted">Memuat…</p></div>;
   return <>{children}</>;
 }

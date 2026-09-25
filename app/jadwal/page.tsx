@@ -49,11 +49,16 @@ function Content() {
   const [editPertemuan, setEditPertemuan] = useState<AcademicEvent | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [materi, setMateri] = useState("");
+  /** Mode isian jadwal: "tanggal" = pertemuan sekali, "hari" = berulang tiap hari pilihan. */
+  const [modeTanggal, setModeTanggal] = useState<"tanggal" | "hari">("tanggal");
   const [tanggal, setTanggal] = useState("");
+  const [hari, setHari] = useState("Senin");
   const [jamMulai, setJamMulai] = useState("07:00");
   const [jamSelesai, setJamSelesai] = useState("08:30");
   const [kelas, setKelas] = useState("VIII-A");
   const [catatan, setCatatan] = useState("");
+  const [formErr, setFormErr] = useState<string[]>([]);
+  const [agendaErr, setAgendaErr] = useState<string[]>([]);
 
   const [editAgenda, setEditAgenda] = useState<AcademicEvent | null>(null);
   const [aFormOpen, setAFormOpen] = useState(false);
@@ -65,8 +70,11 @@ function Content() {
   function openPertemuan(e: AcademicEvent | null) {
     setEditPertemuan(e);
     setFormOpen(true);
+    setFormErr([]);
     setMateri(e?.judul || "");
+    setModeTanggal(e ? (e.tanggal ? "tanggal" : "hari") : "tanggal");
     setTanggal(e?.tanggal || "");
+    setHari(e?.hari || "Senin");
     setJamMulai(e?.jamMulai || "07:00");
     setJamSelesai(e?.jamSelesai || "08:30");
     setKelas(e?.kelas || "VIII-A");
@@ -74,17 +82,27 @@ function Content() {
   }
 
   function savePertemuan() {
-    if (!materi.trim() || !tanggal) return;
+    // Kolom wajib dicek dulu; kolom opsional (catatan) bebas dikosongkan.
+    const kosong = [
+      !materi.trim() ? "Materi" : null,
+      modeTanggal === "tanggal" && !tanggal ? "Tanggal" : null,
+      modeTanggal === "hari" && !hari ? "Hari" : null,
+    ].filter(Boolean) as string[];
+    if (kosong.length) {
+      setFormErr(kosong);
+      return;
+    }
+    setFormErr([]);
     upsertEvent({
       id: editPertemuan?.id || uid("ev"),
       jenis: "jadwal",
       judul: materi.trim(),
-      tanggal,
+      tanggal: modeTanggal === "tanggal" ? tanggal : "",
       jamMulai,
       jamSelesai,
       kelas,
       deskripsi: catatan.trim(),
-      hari: "",
+      hari: modeTanggal === "hari" ? hari : "",
     });
     setFormOpen(false);
     setEditPertemuan(null);
@@ -98,6 +116,7 @@ function Content() {
   function openAgenda(e: AcademicEvent | null) {
     setEditAgenda(e);
     setAFormOpen(true);
+    setAgendaErr([]);
     setAJudul(e?.judul || "");
     setATanggal(e?.tanggal || "");
     setAKategori(e?.kategori || "Kegiatan");
@@ -105,7 +124,15 @@ function Content() {
   }
 
   function saveAgenda() {
-    if (!aJudul.trim() || !aTanggal) return;
+    const kosong = [
+      !aJudul.trim() ? "Judul agenda" : null,
+      !aTanggal ? "Tanggal" : null,
+    ].filter(Boolean) as string[];
+    if (kosong.length) {
+      setAgendaErr(kosong);
+      return;
+    }
+    setAgendaErr([]);
     upsertEvent({
       id: editAgenda?.id || uid("ev"),
       jenis: "agenda",
@@ -216,19 +243,38 @@ function Content() {
           <div className="px-4 py-3 border-t border-line bg-wash/40 space-y-2">
             <p className="text-[13px] font-semibold">{editPertemuan ? "Ubah pertemuan" : "Pertemuan baru"}</p>
             <div className="grid sm:grid-cols-2 gap-2">
-              <input className="input" value={materi} onChange={(e) => setMateri(e.target.value)} placeholder="Materi pertemuan (cth. Bilangan bulat)" />
+              <input className={`input ${formErr.includes("Materi") ? "!border-red-400" : ""}`} value={materi} onChange={(e) => { setMateri(e.target.value); setFormErr([]); }} placeholder="Materi pertemuan (wajib, cth. Bilangan bulat)" />
               <select className="input" value={kelas} onChange={(e) => setKelas(e.target.value)} aria-label="Kelas">
                 {KELAS_LIST.map((k) => <option key={k} value={k}>{k}</option>)}
               </select>
             </div>
+            {/* Pilihan cara mengisi jadwal: tanggal sekali, atau berulang tiap hari + jam. */}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[12.5px] text-ink-muted font-medium">Jadwalkan berdasarkan:</span>
+              <div className="inline-flex rounded-xl border border-line overflow-hidden bg-white">
+                <button type="button" className={`px-3 py-1.5 text-[12.5px] ${modeTanggal === "tanggal" ? "bg-ink text-white" : "text-ink-soft"}`} onClick={() => { setModeTanggal("tanggal"); setFormErr([]); }}>📅 Tanggal tertentu</button>
+                <button type="button" className={`px-3 py-1.5 text-[12.5px] border-l border-line ${modeTanggal === "hari" ? "bg-ink text-white" : "text-ink-soft"}`} onClick={() => { setModeTanggal("hari"); setFormErr([]); }}>🔁 Hari &amp; jam (berulang)</button>
+              </div>
+            </div>
             <div className="grid sm:grid-cols-3 gap-2">
-              <input type="date" className="input" value={tanggal} onChange={(e) => setTanggal(e.target.value)} aria-label="Tanggal" />
+              {modeTanggal === "tanggal" ? (
+                <input type="date" className={`input ${formErr.includes("Tanggal") ? "!border-red-400" : ""}`} value={tanggal} onChange={(e) => { setTanggal(e.target.value); setFormErr([]); }} aria-label="Tanggal" />
+              ) : (
+                <select className={`input ${formErr.includes("Hari") ? "!border-red-400" : ""}`} value={hari} onChange={(e) => { setHari(e.target.value); setFormErr([]); }} aria-label="Hari berulang">
+                  {HARI.map((h) => <option key={h} value={h}>{h} (tiap minggu)</option>)}
+                </select>
+              )}
               <input type="time" className="input" value={jamMulai} onChange={(e) => setJamMulai(e.target.value)} aria-label="Jam mulai" />
               <input type="time" className="input" value={jamSelesai} onChange={(e) => setJamSelesai(e.target.value)} aria-label="Jam selesai" />
             </div>
             <textarea className="input min-h-[64px]" value={catatan} onChange={(e) => setCatatan(e.target.value)} placeholder="Catatan / ruang kelas (opsional)" />
+            {formErr.length ? (
+              <div role="alert" className="rounded-xl border border-red-300 bg-red-50 px-3.5 py-2.5 text-[13px] text-red-700">
+                <b>⚠ Jadwal belum tersimpan.</b> Kolom berikut belum diisi: <b>{formErr.join(", ")}</b>. Kolom bertanda <i>opsional</i> boleh dikosongkan.
+              </div>
+            ) : null}
             <div className="flex gap-2">
-              <button className="btn-primary text-[13px]" disabled={!materi.trim() || !tanggal} onClick={savePertemuan}>{editPertemuan ? "Simpan perubahan" : "Tambah pertemuan"}</button>
+              <button className="btn-primary text-[13px]" onClick={savePertemuan}>{editPertemuan ? "Simpan perubahan" : "Tambah pertemuan"}</button>
               <button className="btn-ghost text-[13px]" onClick={closePertemuan}>Batal</button>
             </div>
           </div>
@@ -273,15 +319,20 @@ function Content() {
           <div className="px-4 py-3 border-t border-line bg-wash/40 space-y-2">
             <p className="text-[13px] font-semibold">{editAgenda ? "Ubah agenda" : "Agenda baru"}</p>
             <div className="grid sm:grid-cols-3 gap-2">
-              <input className="input" value={aJudul} onChange={(e) => setAJudul(e.target.value)} placeholder="Judul agenda (cth. UTS Semester Ganjil)" />
-              <input type="date" className="input" value={aTanggal} onChange={(e) => setATanggal(e.target.value)} aria-label="Tanggal agenda" />
+              <input className={`input ${agendaErr.includes("Judul agenda") ? "!border-red-400" : ""}`} value={aJudul} onChange={(e) => { setAJudul(e.target.value); setAgendaErr([]); }} placeholder="Judul agenda (wajib, cth. UTS Semester Ganjil)" />
+              <input type="date" className={`input ${agendaErr.includes("Tanggal") ? "!border-red-400" : ""}`} value={aTanggal} onChange={(e) => { setATanggal(e.target.value); setAgendaErr([]); }} aria-label="Tanggal agenda" />
               <select className="input" value={aKategori} onChange={(e) => setAKategori(e.target.value)} aria-label="Kategori">
                 {KATEGORI_AGENDA.map((k) => <option key={k} value={k}>{k}</option>)}
               </select>
             </div>
             <input className="input" value={aDeskripsi} onChange={(e) => setADeskripsi(e.target.value)} placeholder="Deskripsi (opsional)" />
+            {agendaErr.length ? (
+              <div role="alert" className="rounded-xl border border-red-300 bg-red-50 px-3.5 py-2.5 text-[13px] text-red-700">
+                <b>⚠ Agenda belum tersimpan.</b> Kolom berikut belum diisi: <b>{agendaErr.join(", ")}</b>. Deskripsi opsional boleh dikosongkan.
+              </div>
+            ) : null}
             <div className="flex gap-2">
-              <button className="btn-primary text-[13px]" disabled={!aJudul.trim() || !aTanggal} onClick={saveAgenda}>{editAgenda ? "Simpan perubahan" : "Tambah agenda"}</button>
+              <button className="btn-primary text-[13px]" onClick={saveAgenda}>{editAgenda ? "Simpan perubahan" : "Tambah agenda"}</button>
               <button className="btn-ghost text-[13px]" onClick={closeAgenda}>Batal</button>
             </div>
           </div>

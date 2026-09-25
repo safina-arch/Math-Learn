@@ -6,13 +6,14 @@ import { useEffect } from "react";
 import { AppShell } from "@/components/shell";
 import { Badge, PageHeader, Progress, Stat } from "@/components/ui";
 import { useStore } from "@/lib/store";
-import { fmtDateTime, STATUS_TUGAS_META, todayIso } from "@/lib/utils";
+import { fmtDateTime, jendelaEvaluasi, STATUS_TUGAS_META, todayIso } from "@/lib/utils";
 
 function SiswaDash() {
   const { user, assignments, submissions, announcements, materials, events } = useStore();
   const mine = submissions.filter((s) => s.siswaId === user?.id);
   const doneIds = new Set(mine.map((s) => s.assignmentId));
-  const upcoming = assignments.filter((a) => !doneIds.has(a.id) && !(a.tipe === "evaluasi" && a.terkunci)).slice(0, 4);
+  // Evaluasi yang dikunci manual atau sudah lewat jadwal tutup tidak dihitung tugas mendatang.
+  const upcoming = assignments.filter((a) => !doneIds.has(a.id) && !(a.tipe === "evaluasi" && (a.terkunci || jendelaEvaluasi(a) === "lewat-waktu"))).slice(0, 4);
   const graded = mine.filter((s) => s.status === "dinilai" && s.nilai != null).sort((a, b) => b.submittedAt.localeCompare(a.submittedAt));
   const last = graded[0] || null;
   const lastAssign = last ? assignments.find((a) => a.id === last.assignmentId) : null;
@@ -212,16 +213,17 @@ function AdminDash() {
 }
 
 export default function DashboardPage() {
-  const { user } = useStore();
+  const { user, ready } = useStore();
   const router = useRouter();
   useEffect(() => {
-    if (!user) router.replace("/login");
-  }, [user, router]);
+    // Hanya redirect bila sesi sudah dimuat dan benar-benar kosong (bukan saat hydrate).
+    if (ready && !user) router.replace("/login");
+  }, [ready, user, router]);
 
   return (
     <AppShell>
       <div className="page-wrap !px-0 !pb-0 !max-w-none">
-        {!user ? <p className="muted">Memuat…</p> : user.role === "siswa" ? <SiswaDash /> : user.role === "guru" ? <GuruDash /> : <AdminDash />}
+        {!ready || !user ? <p className="muted">Memuat…</p> : user.role === "siswa" ? <SiswaDash /> : user.role === "guru" ? <GuruDash /> : <AdminDash />}
       </div>
     </AppShell>
   );

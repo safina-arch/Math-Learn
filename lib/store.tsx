@@ -19,6 +19,8 @@ import { nowIso, uid } from "./utils";
 type Account = User & { password?: string };
 
 interface Store {
+  /** True setelah data (termasuk sesi user) selesai dimuat dari penyimpanan lokal. */
+  ready: boolean;
   user: User | null;
   impersonating: User | null;
   users: User[];
@@ -207,6 +209,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       return next;
     };
     return {
+      ready,
       user: impersonating || user,
       impersonating,
       users,
@@ -325,7 +328,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         setCheatLogs([]);
       },
     };
-  }, [user, impersonating, accounts, presence, materials, assignments, submissions, announcements, notifications, cheatLogs, events]);
+  }, [ready, user, impersonating, accounts, presence, materials, assignments, submissions, announcements, notifications, cheatLogs, events]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

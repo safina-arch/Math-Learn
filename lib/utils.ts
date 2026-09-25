@@ -106,6 +106,26 @@ export function statusTugas(sub?: { status: string } | null): StatusTugas {
   return sub.status === "dinilai" ? "sudah" : "belum-diperiksa";
 }
 
+/** Status ketersediaan evaluasi: dikunci manual, belum waktunya, terbuka, atau sudah lewat. */
+export type JendelaEvaluasi = "kunci-manual" | "belum-buka" | "buka" | "lewat-waktu";
+export const JENDELA_META: Record<JendelaEvaluasi, { label: string; tone: "gray" | "amber" | "green" | "red" }> = {
+  "kunci-manual": { label: "Terkunci", tone: "gray" },
+  "belum-buka": { label: "Belum dibuka", tone: "amber" },
+  buka: { label: "Terbuka", tone: "green" },
+  "lewat-waktu": { label: "Ditutup otomatis", tone: "red" },
+};
+/**
+ * Evaluasi otomatis terbuka saat `bukaAt` tiba dan otomatis terkunci setelah `tutupAt`,
+ * tanpa perlu klik manual. Kunci manual admin tetap berlaku di atas jadwal ini.
+ */
+export function jendelaEvaluasi(a: { bukaAt?: string | null; tutupAt?: string | null; terkunci?: boolean }): JendelaEvaluasi {
+  if (a.terkunci) return "kunci-manual";
+  const now = Date.now();
+  if (a.bukaAt && Date.parse(a.bukaAt) > now) return "belum-buka";
+  if (a.tutupAt && Date.parse(a.tutupAt) <= now) return "lewat-waktu";
+  return "buka";
+}
+
 /** Ringkasan tiga status tugas di seluruh tugas: belum mengerjakan / belum diperiksa / sudah diperiksa. */
 export function statusRingkasan(assignments: Assignment[], submissions: Submission[], users: User[]) {
   let belum = 0;

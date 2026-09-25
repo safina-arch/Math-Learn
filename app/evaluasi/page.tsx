@@ -1,13 +1,13 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AppShell, Guard } from "@/components/shell";
 import { Badge, Empty, PageHeader } from "@/components/ui";
 import { TaskModal } from "@/components/task-modal";
 import { SubmissionStatus } from "@/components/submission-status";
 import { useStore } from "@/lib/store";
-import { fmtDateTime } from "@/lib/utils";
+import { fmtDateTime, JENDELA_META, jendelaEvaluasi } from "@/lib/utils";
 import type { Assignment } from "@/lib/types";
 
 export default function EvaluasiPage() {
@@ -27,6 +27,14 @@ function List() {
   const [editT, setEditT] = useState<Assignment | null>(null);
   const manage = user?.role === "guru" || user?.role === "admin";
 
+  // Tick tiap 30 detik agar status buka/kunci otomatis ikut berubah tanpa refresh.
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setTick((n) => n + 1), 30_000);
+    return () => clearInterval(t);
+  }, []);
+  void tick;
+
   const items = assignments.filter((a) => a.tipe === "evaluasi");
   const mine = new Map(submissions.filter((s) => s.siswaId === user?.id).map((s) => [s.assignmentId, s]));
 
@@ -43,13 +51,16 @@ function List() {
           <li>Timer berjalan mundur dan otomatis mengumpulkan saat habis.</li>
           <li>Satu kesempatan — evaluasi hanya bisa dikerjakan satu kali.</li>
           <li>Jangan pindah tab / minimize — setiap pelanggaran dicatat + dilaporkan ke guru.</li>
-          <li>Evaluasi berstatus <b>Terkunci</b> belum bisa dikerjakan sampai dibuka admin.</li>
+          <li>Evaluasi <b>otomatis terbuka &amp; terkunci</b> sesuai jadwal waktu yang ditentukan guru/admin.</li>
+          <li>Evaluasi berstatus <b>Terkunci</b> bisa juga dikunci manual oleh admin kapan saja.</li>
         </ul>
       </div>
       {items.length === 0 ? <Empty title="Belum ada evaluasi" desc={manage ? "Klik \"+ Evaluasi\" untuk membuat yang pertama." : undefined} /> : (
         <div className="space-y-3">
           {items.map((a) => {
             const s = mine.get(a.id);
+            const jendela = jendelaEvaluasi(a);
+            const meta = JENDELA_META[jendela];
             const clickable = user?.role === "siswa";
             return (
               <div
@@ -61,10 +72,12 @@ function List() {
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge tone="red">EVALUASI</Badge>
                   <Badge>{a.durasiMenit} menit</Badge>
-                  {a.terkunci ? <Badge tone="gray">Terkunci</Badge> : null}
-                  {user?.role === "siswa" ? (s ? <Badge tone="green">Sudah dikerjakan</Badge> : a.terkunci ? null : <Badge tone="amber">Belum dikerjakan</Badge>) : null}
+                  <Badge tone={meta.tone}>{meta.label}</Badge>
+                  {user?.role === "siswa" ? (s ? <Badge tone="green">Sudah dikerjakan</Badge> : jendela === "buka" ? <Badge tone="amber">Belum dikerjakan</Badge> : null) : null}
                   {manage ? <SubmissionStatus assignment={a} /> : null}
-                  <span className="ml-auto text-[12.5px] text-ink-faint">{fmtDateTime(a.bukaAt)} – {fmtDateTime(a.tutupAt)}</span>
+                  <span className="ml-auto text-[12.5px] text-ink-faint">
+                    {a.bukaAt ? `Buka ${fmtDateTime(a.bukaAt)}` : "Buka kapan saja"}{a.tutupAt ? ` · Tutup ${fmtDateTime(a.tutupAt)}` : ""}
+                  </span>
                 </div>
                 <p className="text-[15.5px] font-semibold mt-2">{a.judul}</p>
                 <p className="muted mt-0.5 line-clamp-2">{a.deskripsi}</p>

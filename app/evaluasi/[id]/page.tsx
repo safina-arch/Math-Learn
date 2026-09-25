@@ -7,7 +7,7 @@ import { AppShell, Guard } from "@/components/shell";
 import { AnswerUpload } from "@/components/answer-upload";
 import { Badge, Modal } from "@/components/ui";
 import { useStore } from "@/lib/store";
-import { fmtCountdown, heuristicGrade, nowIso, pgCorrect, uid } from "@/lib/utils";
+import { fmtCountdown, heuristicGrade, jendelaEvaluasi, nowIso, pgCorrect, uid } from "@/lib/utils";
 
 export default function ExamPage() {
   return (
@@ -38,6 +38,16 @@ function Exam() {
   const [busy, setBusy] = useState(false);
   const [activeQuestion, setActiveQuestion] = useState(1);
   const examKey = user ? `mathlearn-exam:${id}:${user.id}` : "";
+
+  // Tick tiap 30 detik: layar awal ikut terbuka/tertutup otomatis mengikuti jadwal evaluasi.
+  const [jadwalTick, setJadwalTick] = useState(0);
+  useEffect(() => {
+    if (started) return;
+    const t = setInterval(() => setJadwalTick((n) => n + 1), 30_000);
+    return () => clearInterval(t);
+  }, [started]);
+  void jadwalTick;
+
   const cheatRef = useRef(0);
   const photoRef = useRef(0);
   const lastCheatAt = useRef(0);
@@ -188,16 +198,33 @@ function Exam() {
   }
 
   if (!started) {
-    // Dikunci admin: siswa hanya bisa melihat keterangan, tidak bisa mulai.
-    if (a.terkunci) {
+    // Di luar jendela waktu (dikunci manual, belum dibuka, atau sudah ditutup otomatis):
+    // siswa hanya melihat keterangan, tidak bisa mulai.
+    const jendela = jendelaEvaluasi(a);
+    if (jendela !== "buka") {
+      const info = {
+        "kunci-manual": {
+          tone: "red" as const, badge: "TERKUNCI",
+          pesan: a.tutupAt ? `Evaluasi terkunci dan akan/sudah ditutup otomatis pada ${new Date(a.tutupAt).toLocaleString("id-ID", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" })}.` : "Evaluasi dikunci oleh admin dan belum dapat dikerjakan. Informasi penegasan waktu akan diumumkan guru.",
+        },
+        "belum-buka": {
+          tone: "amber" as const, badge: "BELUM DIBUKA",
+          pesan: `Evaluasi belum dibuka. Pengerjaan otomatis dapat dimulai pada ${a.bukaAt ? new Date(a.bukaAt).toLocaleString("id-ID", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" }) : "waktu yang ditentukan"}.`,
+        },
+        "lewat-waktu": {
+          tone: "gray" as const, badge: "DITUTUP",
+          pesan: "Waktu pengerjaan evaluasi ini sudah berakhir dan sistem menutupnya otomatis. Hubungi guru bila ada keperluan khusus.",
+        },
+        buka: { tone: "green" as const, badge: "TERBUKA", pesan: "" },
+      }[jendela];
       return (
         <div className="page-wrap !px-0 !pb-0 !max-w-none">
           <Link href="/evaluasi" className="text-[13px] text-ink-muted hover:text-primary">← Semua evaluasi</Link>
           <div className="card card-pad sm:p-7 mt-3 max-w-[680px]">
-            <Badge tone="red">TERKUNCI</Badge>
+            <Badge tone={info.tone}>{info.badge}</Badge>
             <h1 className="h1 mt-2">{a.judul}</h1>
             <p className="muted mt-1.5 whitespace-pre-wrap">{a.deskripsi}</p>
-            <p className="text-[14.5px] mt-4">Evaluasi ini dikunci oleh admin dan belum dapat dikerjakan. Informasi penegasan waktu akan diumumkan guru.</p>
+            <p className="text-[14.5px] mt-4">{info.pesan}</p>
             <Link href="/evaluasi" className="btn-ghost mt-5">Kembali</Link>
           </div>
         </div>

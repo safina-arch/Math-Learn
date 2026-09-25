@@ -93,8 +93,18 @@ export function MaterialModal({ open, initial, onClose, onSave }: { open: boolea
                 <div key={`${file.url}-${index}`} className="group flex items-center gap-3 rounded-lg border border-line bg-white px-3 py-2.5 shadow-sm">
                   <span className={`flex h-9 w-9 items-center justify-center rounded-lg text-[9px] font-bold shrink-0 ${file.tipe === "link" ? "bg-blue-50 border border-blue-200 text-blue-700" : "bg-primary-50 border border-primary-100 text-primary"}`}>{file.tipe === "link" ? "LINK" : attachmentType(file.name)}</span>
                   <div className="min-w-0 flex-1">
-                    <a href={file.url} target="_blank" rel="noreferrer" className="block text-[13px] font-medium truncate hover:text-primary">{file.name || file.url}</a>
-                    <p className="text-[11.5px] text-ink-faint">{file.tipe === "link" ? "Tautan eksternal" : formatFileSize(file.size)}</p>
+                    {/* Nama tampilan bisa dikustom — inilah nama yang dilihat siswa di materi. */}
+                    <input
+                      className="input !py-1 !text-[13px] font-medium"
+                      value={file.name || ""}
+                      onChange={(e) => setAttachments((current) => current.map((f, i) => (i === index ? { ...f, name: e.target.value } : f)))}
+                      placeholder={file.tipe === "link" ? "Nama tautan (opsional)" : "Nama file (bisa dikustom)"}
+                      aria-label="Nama tampilan lampiran"
+                    />
+                    <p className="text-[11.5px] text-ink-faint mt-1 flex items-center gap-2">
+                      <span>{file.tipe === "link" ? "Tautan eksternal" : formatFileSize(file.size)}</span>
+                      <a href={file.url} target="_blank" rel="noreferrer" className="hover:text-primary underline-offset-2">Buka ↗</a>
+                    </p>
                   </div>
                   <button type="button" aria-label={`Hapus ${file.name}`} className="rounded-md px-2 py-1 text-[12px] text-ink-muted hover:bg-red-50 hover:text-red-600" onClick={() => setAttachments((current) => current.filter((_, i) => i !== index))}>Hapus</button>
                 </div>

@@ -9,6 +9,7 @@ import { fmtDateTime, STATUS_TUGAS_META, statusTugas, TIPE_LABEL, TIPE_TONE, TIP
 import type { AssignmentType } from "@/lib/types";
 
 type FilterTipe = "semua" | AssignmentType;
+type SortKey = "siswa" | "tipe" | "tugas" | "kelas" | "nilai" | "waktu";
 
 export default function NilaiPage() {
   return (
@@ -22,12 +23,41 @@ export default function NilaiPage() {
 
 function AdminGrades({ submissions, assignments, users }: { submissions: ReturnType<typeof useStore>["submissions"]; assignments: ReturnType<typeof useStore>["assignments"]; users: ReturnType<typeof useStore>["users"] }) {
   const [filter, setFilter] = useState<FilterTipe>("semua");
+  /** Sorting manual per kolom; null = tampilan baku (dikelompokkan per jenis tugas). */
+  const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 } | null>(null);
 
   const tipeOf = (sid: string): AssignmentType => assignments.find((a) => a.id === sid)?.tipe || "latihan";
+  const judulDari = (sid: string) => (assignments.find((a) => a.id === sid)?.judul || sid).toLowerCase();
+  const kunciSort = (s: (typeof submissions)[number], key: SortKey): string | number => {
+    if (key === "siswa") return s.siswaNama.toLowerCase();
+    if (key === "tipe") return TIPEURUT[tipeOf(s.assignmentId)];
+    if (key === "tugas") return judulDari(s.assignmentId);
+    if (key === "kelas") return s.kelas.toLowerCase();
+    if (key === "nilai") return s.nilai ?? -1;
+    return s.submittedAt;
+  };
   const rows = submissions
     .filter((s) => filter === "semua" || tipeOf(s.assignmentId) === filter)
     .slice()
-    .sort((a, b) => TIPEURUT[tipeOf(a.assignmentId)] - TIPEURUT[tipeOf(b.assignmentId)] || b.submittedAt.localeCompare(a.submittedAt));
+    .sort((a, b) => {
+      if (sort) {
+        const va = kunciSort(a, sort.key);
+        const vb = kunciSort(b, sort.key);
+        if (va < vb) return -sort.dir;
+        if (va > vb) return sort.dir;
+        return b.submittedAt.localeCompare(a.submittedAt);
+      }
+      return TIPEURUT[tipeOf(a.assignmentId)] - TIPEURUT[tipeOf(b.assignmentId)] || b.submittedAt.localeCompare(a.submittedAt);
+    });
+  const klikSort = (key: SortKey) => setSort((p) => (p?.key === key ? { key, dir: p.dir === 1 ? -1 : 1 } : { key, dir: 1 }));
+  const panah = (key: SortKey) => (sort?.key === key ? (sort.dir === 1 ? "▲" : "▼") : "↕");
+  const th = (key: SortKey, label: string) => (
+    <th className="px-4 py-2.5 font-medium">
+      <button type="button" className={`inline-flex items-center gap-1 hover:text-ink ${sort?.key === key ? "text-ink font-semibold" : ""}`} onClick={() => klikSort(key)}>
+        {label}<span className="text-[10px] text-ink-faint">{panah(key)}</span>
+      </button>
+    </th>
+  );
   const hitung = (t: AssignmentType) => submissions.filter((s) => tipeOf(s.assignmentId) === t).length;
   const chips: { key: FilterTipe; label: string }[] = [
     { key: "semua", label: `Semua (${submissions.length})` },
@@ -37,7 +67,7 @@ function AdminGrades({ submissions, assignments, users }: { submissions: ReturnT
   return (
     <div className="page-wrap !px-0 !pb-0 !max-w-none">
       <PageHeader title="Nilai siswa" desc="Pantau seluruh kiriman dan nilai siswa, terkelompok per jenis tugas." right={<a href="/api/export/nilai" className="btn-ghost text-[13px]">Ekspor CSV</a>} />
-      <div className="flex flex-wrap gap-1.5 mb-3">
+      <div className="flex flex-wrap items-center gap-1.5 mb-3">
         {chips.map((c) => (
           <button
             key={c.key}
@@ -45,6 +75,7 @@ function AdminGrades({ submissions, assignments, users }: { submissions: ReturnT
             onClick={() => setFilter(c.key)}
           >{c.label}</button>
         ))}
+        <span className="text-[12px] text-ink-faint ml-auto">Klik judul kolom untuk mengurutkan {sort ? <button className="text-primary font-medium" onClick={() => setSort(null)}>reset</button> : null}</span>
       </div>
       {submissions.length === 0 ? <Empty title="Belum ada nilai siswa" desc="Nilai akan muncul setelah siswa mengumpulkan tugas atau evaluasi." /> : rows.length === 0 ? (
         <Empty title="Tidak ada nilai pada jenis ini" desc="Pilih jenis tugas lain pada filter di atas." />
@@ -52,7 +83,7 @@ function AdminGrades({ submissions, assignments, users }: { submissions: ReturnT
         <div className="card overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-[13.5px] min-w-[760px]">
-              <thead><tr className="text-left text-[12px] text-ink-muted bg-wash/50"><th className="px-4 py-2.5 font-medium">Siswa</th><th className="px-4 py-2.5 font-medium">Jenis</th><th className="px-4 py-2.5 font-medium">Tugas / evaluasi</th><th className="px-4 py-2.5 font-medium">Kelas</th><th className="px-4 py-2.5 font-medium">Nilai</th><th className="px-4 py-2.5 font-medium">Status</th><th className="px-4 py-2.5 font-medium">Dikumpulkan</th></tr></thead>
+              <thead><tr className="text-left text-[12px] text-ink-muted bg-wash/50">{th("siswa", "Siswa")}{th("tipe", "Jenis")}{th("tugas", "Tugas / evaluasi")}{th("kelas", "Kelas")}{th("nilai", "Nilai")}<th className="px-4 py-2.5 font-medium">Status</th>{th("waktu", "Dikumpulkan")}</tr></thead>
               <tbody>{(() => {
                 let lastTipe: AssignmentType | null = null;
                 return rows.map((s) => {
@@ -60,7 +91,7 @@ function AdminGrades({ submissions, assignments, users }: { submissions: ReturnT
                   const siswa = users.find((u) => u.id === s.siswaId);
                   const meta = STATUS_TUGAS_META[statusTugas(s)];
                   const tipe = tipeOf(s.assignmentId);
-                  const showHead = filter === "semua" && tipe !== lastTipe;
+                  const showHead = !sort && filter === "semua" && tipe !== lastTipe;
                   lastTipe = tipe;
                   return (
                     <Fragment key={s.id}>

@@ -20,7 +20,14 @@ function Content() {
   const { announcements, user, addAnnouncement, deleteAnnouncement, addNotification } = useStore();
   const [judul, setJudul] = useState("");
   const [isi, setIsi] = useState("");
+  const [err, setErr] = useState<string[]>([]);
   const canPost = user?.role === "guru" || user?.role === "admin";
+
+  // Kolom wajib yang harus diisi (kolom opsional tidak ditampilkan pada peringatan).
+  const kolomKosong = [
+    !judul.trim() ? "Judul pengumuman" : null,
+    !isi.trim() ? "Isi pengumuman" : null,
+  ].filter(Boolean) as string[];
 
   return (
     <div className="page-wrap !px-0 !pb-0 !max-w-none">
@@ -30,7 +37,12 @@ function Content() {
           className="card card-pad mb-3 space-y-3"
           onSubmit={(e) => {
             e.preventDefault();
-            if (!judul.trim() || !isi.trim() || !user) return;
+            if (!user) return;
+            if (kolomKosong.length) {
+              setErr(kolomKosong);
+              return;
+            }
+            setErr([]);
             addAnnouncement({ id: uid("a"), judul: judul.trim(), isi: isi.trim(), targetKelas: user.role === "guru" ? user.kelas : "VIII-A", createdBy: user.nama, createdAt: nowIso() });
             addNotification({ userId: "all-siswa", kategori: "pengumuman", judul: judul.trim(), isi: isi.trim().slice(0, 120) });
             setJudul("");
@@ -38,9 +50,17 @@ function Content() {
           }}
         >
           <p className="h2">Buat pengumuman</p>
-          <input className="input" value={judul} onChange={(e) => setJudul(e.target.value)} placeholder="Judul pengumuman" />
-          <textarea className="input min-h-[84px]" value={isi} onChange={(e) => setIsi(e.target.value)} placeholder="Isi pengumuman…" />
-          <button className="btn-primary text-[13px]" type="submit">Publikasikan</button>
+          <input className={`input ${err.includes("Judul pengumuman") && !judul.trim() ? "!border-red-400" : ""}`} value={judul} onChange={(e) => { setJudul(e.target.value); setErr([]); }} placeholder="Judul pengumuman (wajib)" />
+          <textarea className={`input min-h-[84px] ${err.includes("Isi pengumuman") && !isi.trim() ? "!border-red-400" : ""}`} value={isi} onChange={(e) => { setIsi(e.target.value); setErr([]); }} placeholder="Isi pengumuman… (wajib)" />
+          {err.length ? (
+            <div role="alert" className="rounded-xl border border-red-300 bg-red-50 px-3.5 py-2.5 text-[13px] text-red-700">
+              <b>⚠ Pengumuman belum bisa dipublikasikan.</b> Kolom berikut belum diisi: <b>{err.join(", ")}</b>. Kolom opsional boleh dikosongkan.
+            </div>
+          ) : null}
+          <div className="flex items-center gap-3">
+            <button className="btn-primary text-[13px]" type="submit">Publikasikan</button>
+            <span className="text-[12px] text-ink-faint">Kolom bertanda <b>wajib</b> harus diisi.</span>
+          </div>
         </form>
       ) : null}
       <div className="space-y-3">
