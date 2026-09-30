@@ -25,7 +25,7 @@ const META = {
 } as const;
 
 /** Daftar LKPD / Latihan — termasuk aksi kelola (guru/admin) & status pengumpulan. */
-export function AssignmentList({ tipe }: { tipe: "lkpd" | "latihan" }) {
+export function AssignmentList({ tipe, header = true }: { tipe: "lkpd" | "latihan"; header?: boolean }) {
   const { assignments, submissions, user, upsertAssignment, deleteAssignment, addNotification } = useStore();
   const router = useRouter();
   const [tOpen, setTOpen] = useState(false);
@@ -38,11 +38,18 @@ export function AssignmentList({ tipe }: { tipe: "lkpd" | "latihan" }) {
 
   return (
     <div>
-      <PageHeader
-        title={meta.title}
-        desc={meta.desc}
-        right={manage ? <button className="btn-primary text-[13px]" onClick={() => { setEditT(null); setTOpen(true); }}>{meta.create}</button> : undefined}
-      />
+      {header ? (
+        <PageHeader
+          title={meta.title}
+          desc={meta.desc}
+          right={manage ? <button className="btn-primary text-[13px]" onClick={() => { setEditT(null); setTOpen(true); }}>{meta.create}</button> : undefined}
+        />
+      ) : null}
+      {!header && manage ? (
+        <div className="flex justify-end mb-3">
+          <button className="btn-primary text-[13px]" onClick={() => { setEditT(null); setTOpen(true); }}>{meta.create}</button>
+        </div>
+      ) : null}
       {items.length === 0 ? (
         <Empty title={meta.empty} desc={manage ? `Klik "${meta.create}" untuk membuat yang pertama.` : undefined} />
       ) : (

@@ -1,9 +1,28 @@
 # Plan Revisi Math-Learn — Status Eksekusi
 
-Tanggal: 23–30 Sep 2026 · Proyek: `mathlearn/` (Next.js 14 + Supabase + localStorage fallback)
-**Status: Gelombang 1–6 SELESAI & LIVE · Gelombang 6 SELESAI & LIVE (commit `7629559`, deploy `dpl_Fc9eg96TuMbQE3zKo6J94ZmJoJ7w` READY, verifikasi produksi PASS)**
+Tanggal: 23 Sep – 1 Okt 2026 · Proyek: `mathlearn/` (Next.js 14 + Supabase + localStorage fallback)
+**Status: Gelombang 1–6 SELESAI & LIVE · Gelombang 6 LIVE (`7629559`) · Sistem LKPD scalable (Learning Journey) LIVE**
 
 Legenda: ✅ selesai & terverifikasi · ⏳ menunggu kredensial (Supabase & Vercel token)
+
+---
+
+## Fitur: Sistem LKPD scalable (1 Okt 2026)
+
+LKPD kini fitur **global berbasis materi** (bukan halaman khusus Perbandingan). Hierarki data: `LKPD → Topik/Materi → Submateri → Mission → Content Block` — semuanya data-driven, guru/admin menambah materi baru tanpa mengubah sistem.
+
+| Area | Implementasi |
+|---|---|
+| Route baru | `/lkpd` (Learning Journey Hub), `/lkpd/[topik]` (daftar submateri), `/lkpd/[topik]/[sub]` (perjalanan misi), `/lkpd/[topik]/[sub]/kelola` (editor guru/admin, Guard `guru+admin`) |
+| Tipe & helper | `lib/types.ts` (LkpdTopic/Subtopic/Mission/Block/Progress), `lib/lkpd.ts` (5 tahap default `LKPD_TAHAP`, kalkulasi progres per submateri & topik, CTA Mulai/Lanjutkan/Lihat) |
+| Store | `lkpdTopics` + `lkpdProgress` di `lib/store.tsx` (localStorage + sinkron Supabase), aksi `upsertLkpdTopic`, `deleteLkpdTopic` (cascade progres), `tandaiMissionLkpd`, `simpanJawabanLkpd`; resource baru di `/api/sync` (`lkpdTopics` teacher-only) |
+| Konten awal | `lib/lkpd-seed.ts` — topik ⚖️ Perbandingan (3 submateri × 5 mission, konten nyata tiap tahap) |
+| Mission interaktif | `components/lkpd/activities.tsx` — **seret-slot** (drag 👷 pekerja → pola 4×12=48), **cocokkan**, **isi-tabel** (manipulasi angka + feedback per sel) |
+| Content block | `components/lkpd/blocks.tsx` — 📝 teks, 🖼️ gambar, 🎥 video, 🎞️ animasi, 📎 berkas, ❓ pertanyaan (feedback edukatif + petunjuk progresif), 🧩 aktivitas, 💡 hint (bertahap), 💬 refleksi (tersimpan per siswa) |
+| Progress | Per submateri (✓/○ per mission → %) → rata-rata ke topik → tampil sebagai progress & status (Belum dimulai/Sedang dipelajari/Selesai) + tombol Mulai/Lanjutkan/Lihat di hub |
+| Kelola guru/admin | `components/lkpd/block-editor.tsx` + halaman kelola: tambah/ubah/hapus/urut mission (default 5 tahap, misi tambahan boleh), editor per blok termasuk aktivitas & pertanyaan, **👁 Preview** mode siswa sebelum **💾 Save** / ↩ Batal |
+| Navigasi | Sidebar 📚 LKPD tetap sama untuk 3 role; bagian bawah hub mempertahankan **Tugas LKPD** lama (pengumpulan bernilai) tanpa perubahan perilaku `/tugas/[id]` |
+| Role | Siswa hanya membaca/mengerjakan (tanpa tombol kelola; `/kelola` mission di-Guard) · Guru kelola materi/submateri/mission/konten · Admin + hapus materi |
 
 ---
 

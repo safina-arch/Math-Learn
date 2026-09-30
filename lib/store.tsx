@@ -6,6 +6,8 @@ import type {
   Announcement,
   Assignment,
   CheatLog,
+  LkpdProgress,
+  LkpdTopic,
   Material,
   Notification,
   Presence,
@@ -13,6 +15,7 @@ import type {
   User,
 } from "./types";
 import { AUTH_USERS, SEED_ANNOUNCEMENTS, SEED_ASSIGNMENTS, SEED_EVENTS, SEED_MATERIALS } from "./seed";
+import { SEED_LKPD_TOPICS } from "./lkpd-seed";
 import { nowIso, uid } from "./utils";
 
 /** Rekaman akun lengkap (password disimpan agar login bisa diverifikasi di client). */
@@ -32,6 +35,10 @@ interface Store {
   notifications: Notification[];
   cheatLogs: CheatLog[];
   events: AcademicEvent[];
+  /** Katalog LKPD (topik → submateri → mission → blok) — data-driven, lintas materi. */
+  lkpdTopics: LkpdTopic[];
+  /** Progres pengerjaan LKPD per siswa. */
+  lkpdProgress: LkpdProgress[];
   login: (email: string, password: string) => string | null;
   register: (nama: string, email: string, password: string, kelas: string) => string | null;
   logout: () => void;
@@ -52,6 +59,10 @@ interface Store {
   deleteUser: (id: string) => void;
   upsertEvent: (e: AcademicEvent) => void;
   deleteEvent: (id: string) => void;
+  upsertLkpdTopic: (t: LkpdTopic) => void;
+  deleteLkpdTopic: (id: string) => void;
+  tandaiMissionLkpd: (subtopicId: string, missionId: string) => void;
+  simpanJawabanLkpd: (subtopicId: string, blockId: string, teks: string) => void;
   resetDemo: () => void;
 }
 
@@ -65,6 +76,8 @@ const EVENTS_KEY = `${KEY}:events-v2`;
 const SUBMISSIONS_KEY = `${KEY}:submissions-v2`;
 const NOTIFICATIONS_KEY = `${KEY}:notifications-v2`; 
 const CHEAT_KEY = `${KEY}:cheat-v2`; 
+const LKPD_KEY = `${KEY}:lkpd-v1`;
+const LKPD_PROGRESS_KEY = `${KEY}:lkpd-progress-v1`;
 
 function load<T>(k: string, fallback: T): T {
   try {
@@ -100,6 +113,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [cheatLogs, setCheatLogs] = useState<CheatLog[]>([]);
   const [events, setEvents] = useState<AcademicEvent[]>(SEED_EVENTS);
+  const [lkpdTopics, setLkpdTopics] = useState<LkpdTopic[]>(SEED_LKPD_TOPICS);
+  const [lkpdProgress, setLkpdProgress] = useState<LkpdProgress[]>([]);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
@@ -118,6 +133,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     setNotifications(load<Notification[]>(NOTIFICATIONS_KEY, []));
     setCheatLogs(load<CheatLog[]>(CHEAT_KEY, []));
     setEvents(load<AcademicEvent[]>(EVENTS_KEY, SEED_EVENTS));
+    setLkpdTopics(load<LkpdTopic[]>(LKPD_KEY, SEED_LKPD_TOPICS));
+    setLkpdProgress(load<LkpdProgress[]>(LKPD_PROGRESS_KEY, []));
     const storedImpersonating = load<User | null>(`${KEY}:imp`, null);
     setImpersonating(storedImpersonating && accs.some((account) => account.id === storedImpersonating.id) ? storedImpersonating : null);
     setReady(true);
@@ -141,6 +158,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
             if (Array.isArray(data.cheatLogs)) setCheatLogs(data.cheatLogs as CheatLog[]);
             if (Array.isArray(data.events)) setEvents(data.events as AcademicEvent[]);
             if (Array.isArray(data.users)) setAccounts(data.users as Account[]);
+            if (Array.isArray(data.lkpdTopics)) setLkpdTopics(data.lkpdTopics as LkpdTopic[]);
+            if (Array.isArray(data.lkpdProgress)) setLkpdProgress(data.lkpdProgress as LkpdProgress[]);
           }
         }
       } catch {
@@ -216,9 +235,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       localStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify(notifications));
       localStorage.setItem(CHEAT_KEY, JSON.stringify(cheatLogs));
       localStorage.setItem(EVENTS_KEY, JSON.stringify(events));
+      localStorage.setItem(LKPD_KEY, JSON.stringify(lkpdTopics));
+      localStorage.setItem(LKPD_PROGRESS_KEY, JSON.stringify(lkpdProgress));
       localStorage.setItem(`${KEY}:imp`, JSON.stringify(impersonating));
     } catch {}
-  }, [ready, user, accounts, materials, assignments, submissions, announcements, notifications, cheatLogs, events, impersonating]);
+  }, [ready, user, accounts, materials, assignments, submissions, announcements, notifications, cheatLogs, events, lkpdTopics, lkpdProgress, impersonating]);
 
   const value = useMemo<Store>(() => {
     const effective = impersonating || user;
@@ -240,6 +261,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       notifications,
       cheatLogs,
       events,
+      lkpdTopics,
+      lkpdProgress,
       login: (username, password) => {
         const found = accounts.find((u) => u.email.toLowerCase() === username.toLowerCase().trim());
         if (found && found.password === password) {
@@ -361,6 +384,51 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         void persistShared("events", next, effective?.role);
         return next;
       }),
+      upsertLkpdTopic: (t) => setLkpdTopics((p) => {
+        const next = p.some((x) => x.id === t.id) ? p.map((x) => (x.id === t.id ? t : x)) : [...p, t];
+        void persistShared("lkpdTopics", next, effective?.role);
+        return next;
+      }),
+      deleteLkpdTopic: (id) => {
+        // Topik dihapus → progres siswa pada submaterinya ikut dibuang agar tidak yatim.
+        const topic = lkpdTopics.find((x) => x.id === id);
+        const subIds = new Set((topic?.subtopics || []).map((s) => s.id));
+        setLkpdTopics((p) => {
+          const next = p.filter((x) => x.id !== id);
+          void persistShared("lkpdTopics", next, effective?.role);
+          return next;
+        });
+        setLkpdProgress((p) => {
+          const next = p.filter((x) => !subIds.has(x.subtopicId));
+          if (next.length !== p.length) void persistShared("lkpdProgress", next, effective?.role);
+          return next;
+        });
+      },
+      tandaiMissionLkpd: (subtopicId, missionId) => {
+        const sid = effective?.id;
+        if (!sid) return;
+        setLkpdProgress((p) => {
+          const idx = p.findIndex((x) => x.siswaId === sid && x.subtopicId === subtopicId);
+          const base: LkpdProgress = idx >= 0 ? p[idx] : { siswaId: sid, subtopicId, missions: [], jawaban: {}, updatedAt: nowIso() };
+          if (base.missions.includes(missionId)) return p;
+          const updated: LkpdProgress = { ...base, missions: [...base.missions, missionId], updatedAt: nowIso() };
+          const next = idx >= 0 ? p.map((x, i) => (i === idx ? updated : x)) : [updated, ...p];
+          void persistShared("lkpdProgress", next, effective?.role);
+          return next;
+        });
+      },
+      simpanJawabanLkpd: (subtopicId, blockId, teks) => {
+        const sid = effective?.id;
+        if (!sid) return;
+        setLkpdProgress((p) => {
+          const idx = p.findIndex((x) => x.siswaId === sid && x.subtopicId === subtopicId);
+          const base: LkpdProgress = idx >= 0 ? p[idx] : { siswaId: sid, subtopicId, missions: [], jawaban: {}, updatedAt: nowIso() };
+          const updated: LkpdProgress = { ...base, jawaban: { ...base.jawaban, [blockId]: teks }, updatedAt: nowIso() };
+          const next = idx >= 0 ? p.map((x, i) => (i === idx ? updated : x)) : [updated, ...p];
+          void persistShared("lkpdProgress", next, effective?.role);
+          return next;
+        });
+      },
       resetDemo: () => {
         setMaterials(SEED_MATERIALS);
         setAssignments(SEED_ASSIGNMENTS);
@@ -368,9 +436,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         setEvents(SEED_EVENTS);
         setSubmissions([]);
         setCheatLogs([]);
+        setLkpdTopics(SEED_LKPD_TOPICS);
+        setLkpdProgress([]);
       },
     };
-  }, [ready, user, impersonating, accounts, presence, materials, assignments, submissions, announcements, notifications, cheatLogs, events]);
+  }, [ready, user, impersonating, accounts, presence, materials, assignments, submissions, announcements, notifications, cheatLogs, events, lkpdTopics, lkpdProgress]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

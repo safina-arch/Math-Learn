@@ -11,6 +11,8 @@ const RESOURCES = new Set([
   "events",
   "users",
   "presence",
+  "lkpdTopics",
+  "lkpdProgress",
 ]);
 
 export async function GET() {
@@ -42,7 +44,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Data sinkronisasi tidak valid." }, { status: 400 });
     }
 
-    const teacherOnly = new Set(["materials", "assignments", "announcements", "events"]);
+    const teacherOnly = new Set(["materials", "assignments", "announcements", "events", "lkpdTopics"]);
     if (teacherOnly.has(resource) && role !== "guru" && role !== "admin") {
       return NextResponse.json({ error: "Tidak memiliki izin." }, { status: 403 });
     }

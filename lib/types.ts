@@ -148,3 +148,115 @@ export interface Presence {
   /** ISO timestamp heartbeat terakhir. */
   lastSeen: string;
 }
+
+/* ————————————————————————————————————————————————
+   LKPD — sistem lembar kerja berbasis misi (data-driven, lintas materi).
+   Hierarki: Topik (materi) → Submateri → Mission → Content Block.
+   Perbandingan hanyalah salah satu topik awal; materi lain cukup ditambahkan
+   sebagai data tanpa mengubah sistem.
+   ———————————————————————————————————————————————— */
+
+export type LkpdBlockTipe =
+  | "teks"
+  | "gambar"
+  | "video"
+  | "animasi"
+  | "berkas"
+  | "pertanyaan"
+  | "aktivitas"
+  | "petunjuk"
+  | "refleksi";
+
+export interface LkpdOpsi {
+  teks: string;
+  benar: boolean;
+  /** Feedback edukatif saat opsi dipilih — bukan sekadar "benar/salah". */
+  feedback: string;
+}
+
+export interface LkpdPertanyaan {
+  teks: string;
+  opsi: LkpdOpsi[];
+  /** Petunjuk progresif — muncul satu per satu saat siswa meminta bantuan. */
+  petunjuk?: string[];
+  feedbackBenar?: string;
+}
+
+/** Aktivitas interaktif Mission 3 (mengumpulkan informasi) & 4 (menalar). */
+export type LkpdAktivitasTipe = "seret-slot" | "cocokkan" | "isi-tabel";
+
+export interface LkpdAktivitas {
+  tipe: LkpdAktivitasTipe;
+  instruksi: string;
+  /** seret-slot: kartu yang diseret ke area → memunculkan hasil (menemukan pola). */
+  area?: string;
+  kartu?: { id: string; label: string; hasil: string; feedback?: string }[];
+  /** Ditampilkan setelah seluruh kartu ditempatkan. */
+  temuan?: string;
+  /** cocokkan: pasangkan kolom kiri dengan kolom kanan. */
+  kiri?: { id: string; label: string }[];
+  kanan?: { id: string; label: string }[];
+  pasangan?: Record<string, string>;
+  feedbackSalah?: string;
+  /** isi-tabel: siswa mengisi sel kosong (kunci) — menemukan pola lewat angka. */
+  kolom?: string[];
+  baris?: { sel: LkpdSel[] }[];
+}
+
+/** Sel tabel: `teks` = terisi (fakta), `kunci` = diisi siswa lalu diperiksa. */
+export interface LkpdSel {
+  teks?: string;
+  kunci?: string;
+  feedbackBenar?: string;
+  feedbackSalah?: string;
+}
+
+export interface LkpdBlock {
+  id: string;
+  tipe: LkpdBlockTipe;
+  judul?: string;
+  teks?: string;
+  /** URL media (opsional — kosong = placeholder ramah-prototype). */
+  url?: string;
+  namaBerkas?: string;
+  pertanyaan?: LkpdPertanyaan;
+  aktivitas?: LkpdAktivitas;
+}
+
+export interface LkpdMission {
+  id: string;
+  judul: string;
+  /** Ikon emoji tahapan (👀 ❓ 🔎 🧠 💬). */
+  ikon?: string;
+  deskripsi?: string;
+  blok: LkpdBlock[];
+}
+
+export interface LkpdSubtopic {
+  id: string;
+  judul: string;
+  deskripsi?: string;
+  missions: LkpdMission[];
+}
+
+export interface LkpdTopic {
+  id: string;
+  judul: string;
+  deskripsi: string;
+  /** Emoji ikon kartu (mis. ⚖️ 📐 🧮). */
+  ikon: string;
+  /** URL thumbnail opsional. */
+  thumbnail?: string;
+  subtopics: LkpdSubtopic[];
+}
+
+/** Progres pengerjaan LKPD per siswa per submateri (persist ke localStorage + sinkron). */
+export interface LkpdProgress {
+  siswaId: string;
+  subtopicId: string;
+  /** Id mission yang sudah ditandai selesai. */
+  missions: string[];
+  /** Jawaban blok refleksi per blockId (agar tidak hilang saat pindah mission). */
+  jawaban: Record<string, string>;
+  updatedAt: string;
+}
