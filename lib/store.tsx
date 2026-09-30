@@ -161,6 +161,25 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     return () => { active = false; window.clearInterval(timer); };
   }, [ready]);
 
+  // Hasil siswa & laporan kecurangan wajib terkait dengan tugasnya. Data lama yang
+  // tugasnya sudah dihapus (mis. evaluasi dihapus sebelum aturan ini) ikut dibuang
+  // agar tidak muncul sebagai baris tanpa judul di halaman hasil.
+  useEffect(() => {
+    if (!ready || assignments.length === 0) return;
+    const role = (impersonating || user)?.role;
+    const ids = new Set(assignments.map((a) => a.id));
+    const subNext = submissions.filter((s) => ids.has(s.assignmentId));
+    if (subNext.length !== submissions.length) {
+      setSubmissions(subNext);
+      void persistShared("submissions", subNext, role);
+    }
+    const cheatNext = cheatLogs.filter((c) => ids.has(c.evaluationId));
+    if (cheatNext.length !== cheatLogs.length) {
+      setCheatLogs(cheatNext);
+      void persistShared("cheatLogs", cheatNext, role);
+    }
+  }, [ready, assignments, submissions, cheatLogs, user, impersonating]);
+
   // Heartbeat kehadiran → ditampilkan sebagai "pengguna aktif" di halaman admin.
   useEffect(() => {
     if (!ready || !user) return;
@@ -263,11 +282,25 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         void persistShared("assignments", next, effective?.role);
         return next;
       }),
-      deleteAssignment: (id) => setAssignments((p) => {
-        const next = p.filter((x) => x.id !== id);
-        void persistShared("assignments", next, effective?.role);
-        return next;
-      }),
+      deleteAssignment: (id) => {
+        // Hasil siswa dan laporan kecurangan terikat pada tugasnya:
+        // menghapus latihan/LKPD/evaluasi ikut menghapus kiriman & laporannya.
+        setAssignments((p) => {
+          const next = p.filter((x) => x.id !== id);
+          void persistShared("assignments", next, effective?.role);
+          return next;
+        });
+        setSubmissions((p) => {
+          const next = p.filter((s) => s.assignmentId !== id);
+          if (next.length !== p.length) void persistShared("submissions", next, effective?.role);
+          return next;
+        });
+        setCheatLogs((p) => {
+          const next = p.filter((c) => c.evaluationId !== id);
+          if (next.length !== p.length) void persistShared("cheatLogs", next, effective?.role);
+          return next;
+        });
+      },
       addSubmission: (s) => setSubmissions((p) => {
         const next = [s, ...p.filter((x) => x.id !== s.id)];
         void persistShared("submissions", next, effective?.role);

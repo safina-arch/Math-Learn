@@ -37,6 +37,9 @@ function Exam() {
   const [done, setDone] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
   const [activeQuestion, setActiveQuestion] = useState(1);
+  /** Mirror soal aktif agar penanda navigasi selalu mencatat nomor soal terakhir. */
+  const activeQuestionRef = useRef(1);
+  activeQuestionRef.current = activeQuestion;
   const examKey = user ? `mathlearn-exam:${id}:${user.id}` : "";
 
   // Tick tiap 30 detik: layar awal ikut terbuka/tertutup otomatis mengikuti jadwal evaluasi.
@@ -150,7 +153,7 @@ function Exam() {
   }, [started, done, submit]);
 
   useEffect(() => {
-    if (!started || !a?.kunciTab || done !== null) return;
+    if (!started || !a || a.tipe !== "evaluasi" || done !== null) return;
     const evaluationId = a.id;
     function registerCheat(tipe: "blur" | "visibility") {
       if (doneRef.current || !user) return;
@@ -175,6 +178,27 @@ function Exam() {
       window.removeEventListener("blur", onBlur);
     };
   }, [started, a, done, addCheatLog, user, activeQuestion]);
+
+  // Pelanggaran juga dicatat saat siswa meninggalkan halaman evaluasi lewat menu
+  // sidebar / navigasi internal, selama pengerjaan masih berjalan. Unmount komponen
+  // = perpindahan halaman; ref dipakai agar submit sukses tidak ikut terhitung.
+  const navGuardId = a?.id ?? id;
+  useEffect(() => {
+    if (!started || !user || done !== null) return;
+    const evaluationId = navGuardId;
+    const siswaId = user.id;
+    const siswaNama = user.nama;
+    return () => {
+      if (doneRef.current || startedAt.current === 0) return;
+      const now = Date.now();
+      if (now < photoGrace.current) return;
+      cheatRef.current += 1;
+      const menit = Math.max(1, Math.round((now - (startedAt.current || now)) / 60000));
+      const soal = activeQuestionRef.current;
+      addCheatLog({ evaluationId, siswaId, siswaNama, tipe: "navigasi", soal, menit });
+      void fetch("/api/cheat-log", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ evaluationId, siswaId, siswaNama, tipe: "navigasi", count: cheatRef.current, soal, menit }) });
+    };
+  }, [started, user, done, navGuardId, addCheatLog]);
 
   if (!a) return <div className="page-wrap !px-0"><p className="muted">Evaluasi tidak ditemukan.</p></div>;
 

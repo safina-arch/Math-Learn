@@ -37,6 +37,8 @@ function AdminGrades({ submissions, assignments, users }: { submissions: ReturnT
     return s.submittedAt;
   };
   const rows = submissions
+    // Hasil siswa wajib terkait dengan tugasnya — kiriman tanpa tugas (sudah dihapus) tidak ditampilkan.
+    .filter((s) => assignments.some((a) => a.id === s.assignmentId))
     .filter((s) => filter === "semua" || tipeOf(s.assignmentId) === filter)
     .slice()
     .sort((a, b) => {
@@ -62,9 +64,11 @@ function AdminGrades({ submissions, assignments, users }: { submissions: ReturnT
       </button>
     </th>
   );
-  const hitung = (t: AssignmentType) => submissions.filter((s) => tipeOf(s.assignmentId) === t).length;
+  // Hitungan chip memakai kiriman yang masih punya tugas agar cocok dengan tabel.
+  const berelasi = submissions.filter((s) => assignments.some((a) => a.id === s.assignmentId));
+  const hitung = (t: AssignmentType) => berelasi.filter((s) => tipeOf(s.assignmentId) === t).length;
   const chips: { key: FilterTipe; label: string }[] = [
-    { key: "semua", label: `Semua (${submissions.length})` },
+    { key: "semua", label: `Semua (${berelasi.length})` },
     ...(["latihan", "lkpd", "evaluasi"] as AssignmentType[]).map((t) => ({ key: t, label: `${TIPE_LABEL[t]} (${hitung(t)})` })),
   ];
 
@@ -83,7 +87,7 @@ function AdminGrades({ submissions, assignments, users }: { submissions: ReturnT
           Urut: per jenis tugas → alfabet nama siswa {sort ? <button className="text-primary font-medium" onClick={() => setSort(null)}>reset</button> : null}
         </span>
       </div>
-      {submissions.length === 0 ? <Empty title="Belum ada nilai siswa" desc="Nilai akan muncul setelah siswa mengumpulkan tugas atau evaluasi." /> : rows.length === 0 ? (
+      {berelasi.length === 0 ? <Empty title="Belum ada nilai siswa" desc="Nilai akan muncul setelah siswa mengumpulkan tugas atau evaluasi." /> : rows.length === 0 ? (
         <Empty title="Tidak ada nilai pada jenis ini" desc="Pilih jenis tugas lain pada filter di atas." />
       ) : (
         <div className="card overflow-hidden">
@@ -108,7 +112,9 @@ function AdminGrades({ submissions, assignments, users }: { submissions: ReturnT
                       <tr className="table-row">
                         <td className="px-4 py-2.5 font-medium">{s.siswaNama}<span className="block text-[12px] text-ink-muted">{siswa?.nisn ? `NISN ${siswa.nisn}` : siswa?.email || s.siswaId}</span></td>
                         <td className="px-4 py-2.5"><Badge tone={TIPE_TONE[tipe]}>{TIPE_LABEL[tipe]}</Badge></td>
-                        <td className="px-4 py-2.5">{assignment?.judul || s.assignmentId}</td>
+                        <td className="px-4 py-2.5">
+                          {assignment?.judul ? assignment.judul : <span className="text-ink-faint italic">Tugas sudah dihapus</span>}
+                        </td>
                         <td className="px-4 py-2.5">{s.kelas}</td>
                         <td className="px-4 py-2.5 font-semibold">{s.nilai ?? "—"}</td>
                         <td className="px-4 py-2.5"><Badge tone={meta.tone}>{meta.label}</Badge></td>
@@ -131,7 +137,7 @@ function Content() {
   if (user?.role === "admin") return <AdminGrades submissions={submissions} assignments={assignments} users={users} />;
 
   // Siswa: hanya skor terakhir yang sudah diperiksa guru yang ditampilkan.
-  const mine = submissions.filter((s) => s.siswaId === user?.id).sort((a, b) => b.submittedAt.localeCompare(a.submittedAt));
+  const mine = submissions.filter((s) => s.siswaId === user?.id && assignments.some((a) => a.id === s.assignmentId)).sort((a, b) => b.submittedAt.localeCompare(a.submittedAt));
   const graded = mine.filter((s) => s.status === "dinilai" && s.nilai != null);
   const last = graded[0] || null;
   const lastAssign = last ? assignments.find((a) => a.id === last.assignmentId) : null;

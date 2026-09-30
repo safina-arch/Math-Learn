@@ -30,6 +30,8 @@ export function dataHasilSiswa(
   const tipeOf = (sid: string): AssignmentType => assignments.find((a) => a.id === sid)?.tipe || "latihan";
   const urutTipe: Record<AssignmentType, number> = { latihan: 0, lkpd: 1, evaluasi: 2 };
   const rowsData = submissions
+    // Hasil siswa wajib terkait dengan tugasnya — baris tanpa tugas tidak diekspor.
+    .filter((s) => assignments.some((a) => a.id === s.assignmentId))
     .filter((s) => filter === "semua" || tipeOf(s.assignmentId) === filter)
     .slice()
     .sort((a, b) => {
@@ -53,7 +55,7 @@ export function dataHasilSiswa(
       s.siswaNama,
       s.kelas || siswa?.kelas || "—",
       TIPE_LABEL[tipe],
-      a?.judul || s.assignmentId,
+      a?.judul || "Tugas sudah dihapus",
       meta.label,
       s.nilai ?? "-",
       waktu,

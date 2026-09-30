@@ -45,6 +45,8 @@ function Content() {
     return s.submittedAt;
   };
   const urutKiriman = submissions
+    // Hasil siswa wajib terkait dengan tugasnya — kiriman tanpa tugas (sudah dihapus) tidak ditampilkan.
+    .filter((s) => assignments.some((a) => a.id === s.assignmentId))
     .filter((s) => filter === "semua" || tipeOf(s.assignmentId) === filter)
     .slice()
     .sort((a, b) => {
@@ -70,9 +72,11 @@ function Content() {
       </button>
     </th>
   );
-  const hitungTipe = (t: AssignmentType) => submissions.filter((s) => tipeOf(s.assignmentId) === t).length;
+  // Hitungan chip memakai kiriman yang masih punya tugas agar cocok dengan tabel.
+  const berelasi = submissions.filter((s) => assignments.some((a) => a.id === s.assignmentId));
+  const hitungTipe = (t: AssignmentType) => berelasi.filter((s) => tipeOf(s.assignmentId) === t).length;
   const chips: { key: FilterTipe; label: string }[] = [
-    { key: "semua", label: `Semua (${submissions.length})` },
+    { key: "semua", label: `Semua (${berelasi.length})` },
     ...(["latihan", "lkpd", "evaluasi"] as AssignmentType[]).map((t) => ({ key: t, label: `${TIPE_LABEL[t]} (${hitungTipe(t)})` })),
   ];
 

@@ -115,8 +115,8 @@ export interface CheatLog {
   siswaId: string;
   siswaNama: string;
   timestamp: string;
-  /** "blur"/"visibility" = pelanggaran; "foto" = menambahkan foto (bukan kecurangan). */
-  tipe: "blur" | "visibility" | "foto";
+  /** "blur"/"visibility" = pelanggaran; "foto" = menambahkan foto (bukan kecurangan); "navigasi" = pindah menu/sidebar. */
+  tipe: "blur" | "visibility" | "foto" | "navigasi";
   soal?: number;
   /** Menit ke-N sejak evaluasi dimulai. */
   menit?: number;

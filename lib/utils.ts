@@ -86,6 +86,7 @@ export function fmtTanggal(iso: string | null): string {
 /** Label jenis kecurangan — "foto" adalah kegiatan menambahkan foto, bukan pelanggaran. */
 export function cheatLabel(tipe: string): string {
   if (tipe === "foto") return "Menambahkan foto";
+  if (tipe === "navigasi") return "Pindah menu sidebar";
   if (tipe === "visibility") return "Pindah laman";
   return "Keluar fokus";
 }

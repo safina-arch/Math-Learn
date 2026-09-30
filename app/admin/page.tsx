@@ -55,7 +55,7 @@ function Content() {
       />
       <div className="grid sm:grid-cols-4 gap-3 mb-3">
         <Stat label="Total pengguna" value={String(users.length)} sub={`${users.filter((u) => u.role === "siswa").length} siswa · ${users.filter((u) => u.role === "guru").length} guru`} />
-        <Stat label="Aktif sekarang" value={String(activeNow.length)} sub={presence.length ? "heartbeat < 60 detik" : "butuh Supabase"} />
+        <Stat label="Aktif sekarang" value={String(activeNow.length)} sub={presence.length ? "terhubung < 60 detik lalu" : "butuh Supabase"} />
         <Stat label="Ujian tersedia" value={String(assignments.filter((a) => a.tipe === "evaluasi").length)} />
         <Stat label="Kiriman" value={String(submissions.length)} />
       </div>
