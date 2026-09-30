@@ -1,9 +1,20 @@
 # Plan Revisi Math-Learn — Status Eksekusi
 
-Tanggal: 23–25 Sep 2026 · Proyek: `mathlearn/` (Next.js 14 + Supabase + localStorage fallback)
-**Status: Gelombang 1–4 SELESAI & LIVE · Gelombang 5 SELESAI & LIVE (commit `0b3e75d`, deploy `dpl_CUWg4k1oY9gfZcb4qikiTdFJjAGc` READY, verifikasi produksi PASS)**
+Tanggal: 23–30 Sep 2026 · Proyek: `mathlearn/` (Next.js 14 + Supabase + localStorage fallback)
+**Status: Gelombang 1–6 SELESAI & LIVE · Gelombang 6 SELESAI & LIVE (commit `7629559`, deploy `dpl_Fc9eg96TuMbQE3zKo6J94ZmJoJ7w` READY, verifikasi produksi PASS)**
 
 Legenda: ✅ selesai & terverifikasi · ⏳ menunggu kredensial (Supabase & Vercel token)
+
+---
+
+## Gelombang 6 — 4 revisi (30 Sep 2026) ✅ LIVE (commit `7629559`, deploy `dpl_Fc9eg96TuMbQE3zKo6J94ZmJoJ7w` READY, verifikasi produksi PASS)
+
+| # | Revisi | Implementasi |
+|---|---|---|
+| 1 | Hasil siswa & laporan kecurangan dikaitkan dengan tugasnya — menghapus evaluasi/lkpd/latihan ikut menghapus hasil & laporannya | `deleteAssignment` di `lib/store.tsx` kini cascade: ikut menghapus `submissions` (assignmentId) dan `cheatLogs` (evaluationId) + persist ketiganya; **efek sanitasi saat data termuat** membuang kiriman/laporan yatim sisa penghapusan lama (guard `assignments.length > 0` agar tak salah bersih saat sinkronisasi); tabel & ekspor `/periksa`, `/nilai`, `lib/export.ts` juga memfilter kiriman yang masih punya tugas (chip/empty-state ikut terhitung dari data terkait) |
+| 2 | Admin: hilangkan tulisan "heartbeat" di bagian user yang aktif | Stat "Aktif sekarang" di `/admin`: `sub` "heartbeat < 60 detik" → **"terhubung < 60 detik lalu"** (satu-satunya kemunculan di UI) |
+| 3 | Peringatan kecurangan juga saat siswa pindah sidebar | Tipe baru `CheatLog.tipe: "navigasi"` (`lib/types.ts`), label **"Pindah menu sidebar"** (`cheatLabel`, tone merah), validasi API `/api/cheat-log`; di `/evaluasi/[id]` effect cleanup saat komponen unmount mencatat pelanggaran navigasi **hanya jika pengerjaan masih berjalan** (`startedAt > 0 && !doneRef`) — submit sukses tidak ikut tercatat; nomor soal dari ref mirror agar tidak basi; syarat pengawasan diseragamkan `a.tipe === "evaluasi"` (kunciTab selalu true untuk evaluasi) |
+| 4 | Kolom "Tugas / evaluasi" di hasil nilai masih ngawur (termasuk LKPD) | Akar masalah: kiriman yatim menampilkan **ID mentah** (`s.assignmentId`) dan tipe jatuh ke fallback "latihan" (LKPD bisa salah label). Sekarang baris tanpa tugas **tidak ditampilkan** (filter relasi di tabel, chip, empty-state, dan ekspor), fallback judul jadi **"Tugas sudah dihapus"**, dan pembersihan data yatim di store memastikan tugas ↔ hasil selalu konsisten |
 
 ---
 
