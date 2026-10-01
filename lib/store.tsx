@@ -63,6 +63,8 @@ interface Store {
   deleteLkpdTopic: (id: string) => void;
   tandaiMissionLkpd: (subtopicId: string, missionId: string) => void;
   simpanJawabanLkpd: (subtopicId: string, blockId: string, teks: string) => void;
+  /** Guru/admin menetapkan nilai LKPD: set/clear verifikasi (nilai dihitung dari penyelesaian mission). */
+  verifikasiLkpd: (siswaId: string, subtopicId: string, verifikasi: boolean) => void;
   resetDemo: () => void;
 }
 
@@ -89,16 +91,41 @@ function load<T>(k: string, fallback: T): T {
   }
 }
 
+/**
+ * Jendela waktu "penulisan sedang berjalan" per resource — data dari GET tidak
+ * boleh menimpa state lokal selama jendela ini, agar edit guru/admin tidak
+ * tergeser oleh respons server yang berangkat sebelum POST selesai.
+ */
+const pendingUntil: Record<string, number> = {};
+
 async function persistShared(resource: string, data: unknown[], role?: string) {
-  try {
-    await fetch("/api/sync", {
+  pendingUntil[resource] = Date.now() + 5000;
+  const kirim = () =>
+    fetch("/api/sync", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ resource, data, role }),
     });
+  try {
+    let res: Response | null = null;
+    for (let i = 0; i < 2; i++) {
+      res = await kirim().catch(() => null);
+      if (res?.ok) break;
+      await new Promise((r) => setTimeout(r, 800));
+    }
+    if (res?.ok) {
+      // PERPANJANG: GET yang sudah terlanjur berangkat sebelum POST selesai
+      // tiba 1–2 detik kemudian dengan data lama — jangan sampai menimpa edit.
+      pendingUntil[resource] = Date.now() + 3000;
+    }
   } catch {
     // Mode lokal tetap memakai localStorage ketika server tidak tersedia.
   }
+}
+
+/** true bila resource ini baru saja ditulis → GET harus mengabaikan datanya. */
+function sedangDitulis(resource: string): boolean {
+  return Date.now() < (pendingUntil[resource] || 0);
 }
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
@@ -150,16 +177,16 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           const result = await response.json();
           if (result.configured && result.data) {
             const data = result.data as Record<string, unknown>;
-            if (Array.isArray(data.materials)) setMaterials(data.materials as Material[]);
-            if (Array.isArray(data.assignments)) setAssignments(data.assignments as Assignment[]);
-            if (Array.isArray(data.submissions)) setSubmissions(data.submissions as Submission[]);
-            if (Array.isArray(data.announcements)) setAnnouncements(data.announcements as Announcement[]);
-            if (Array.isArray(data.notifications)) setNotifications(data.notifications as Notification[]);
-            if (Array.isArray(data.cheatLogs)) setCheatLogs(data.cheatLogs as CheatLog[]);
-            if (Array.isArray(data.events)) setEvents(data.events as AcademicEvent[]);
-            if (Array.isArray(data.users)) setAccounts(data.users as Account[]);
-            if (Array.isArray(data.lkpdTopics)) setLkpdTopics(data.lkpdTopics as LkpdTopic[]);
-            if (Array.isArray(data.lkpdProgress)) setLkpdProgress(data.lkpdProgress as LkpdProgress[]);
+            if (Array.isArray(data.materials) && !sedangDitulis("materials")) setMaterials(data.materials as Material[]);
+            if (Array.isArray(data.assignments) && !sedangDitulis("assignments")) setAssignments(data.assignments as Assignment[]);
+            if (Array.isArray(data.submissions) && !sedangDitulis("submissions")) setSubmissions(data.submissions as Submission[]);
+            if (Array.isArray(data.announcements) && !sedangDitulis("announcements")) setAnnouncements(data.announcements as Announcement[]);
+            if (Array.isArray(data.notifications) && !sedangDitulis("notifications")) setNotifications(data.notifications as Notification[]);
+            if (Array.isArray(data.cheatLogs) && !sedangDitulis("cheatLogs")) setCheatLogs(data.cheatLogs as CheatLog[]);
+            if (Array.isArray(data.events) && !sedangDitulis("events")) setEvents(data.events as AcademicEvent[]);
+            if (Array.isArray(data.users) && !sedangDitulis("users")) setAccounts(data.users as Account[]);
+            if (Array.isArray(data.lkpdTopics) && !sedangDitulis("lkpdTopics")) setLkpdTopics(data.lkpdTopics as LkpdTopic[]);
+            if (Array.isArray(data.lkpdProgress) && !sedangDitulis("lkpdProgress")) setLkpdProgress(data.lkpdProgress as LkpdProgress[]);
           }
         }
       } catch {
@@ -411,7 +438,14 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           const idx = p.findIndex((x) => x.siswaId === sid && x.subtopicId === subtopicId);
           const base: LkpdProgress = idx >= 0 ? p[idx] : { siswaId: sid, subtopicId, missions: [], jawaban: {}, updatedAt: nowIso() };
           if (base.missions.includes(missionId)) return p;
-          const updated: LkpdProgress = { ...base, missions: [...base.missions, missionId], updatedAt: nowIso() };
+          const missions = [...base.missions, missionId];
+          const updated: LkpdProgress = { ...base, missions, updatedAt: nowIso() };
+          // Selesai seluruh mission → nilai pengerjaan LKPD terisi (0–100) & menunggu verifikasi guru.
+          const sub = lkpdTopics.flatMap((t) => t.subtopics).find((s) => s.id === subtopicId);
+          if (sub && sub.missions.length > 0 && sub.missions.every((m) => missions.includes(m.id)) && updated.nilai == null) {
+            updated.nilai = Math.round((missions.filter((id) => sub.missions.some((m) => m.id === id)).length / sub.missions.length) * 100);
+            updated.verifikasi = false;
+          }
           const next = idx >= 0 ? p.map((x, i) => (i === idx ? updated : x)) : [updated, ...p];
           void persistShared("lkpdProgress", next, effective?.role);
           return next;
@@ -423,11 +457,46 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         setLkpdProgress((p) => {
           const idx = p.findIndex((x) => x.siswaId === sid && x.subtopicId === subtopicId);
           const base: LkpdProgress = idx >= 0 ? p[idx] : { siswaId: sid, subtopicId, missions: [], jawaban: {}, updatedAt: nowIso() };
+          if (base.jawaban[blockId] === teks) return p;
           const updated: LkpdProgress = { ...base, jawaban: { ...base.jawaban, [blockId]: teks }, updatedAt: nowIso() };
           const next = idx >= 0 ? p.map((x, i) => (i === idx ? updated : x)) : [updated, ...p];
           void persistShared("lkpdProgress", next, effective?.role);
           return next;
         });
+      },
+      verifikasiLkpd: (siswaId, subtopicId, verifikasi) => {
+        const role = effective?.role;
+        if (role !== "guru" && role !== "admin") return;
+        setLkpdProgress((p) => {
+          const next = p.map((x) => {
+            if (x.siswaId !== siswaId || x.subtopicId !== subtopicId) return x;
+            if (x.nilai == null) return x;
+            return { ...x, verifikasi, updatedAt: nowIso() };
+          });
+          void persistShared("lkpdProgress", next, role);
+          return next;
+        });
+        // Notifikasi tersbar ke siswa: nilai LKPD sudah diverifikasi guru.
+        if (verifikasi) {
+          const sub = lkpdTopics.flatMap((t) => t.subtopics).find((s) => s.id === subtopicId);
+          const nilai = lkpdProgress.find((x) => x.siswaId === siswaId && x.subtopicId === subtopicId)?.nilai;
+          setNotifications((p) => {
+            const next = [
+              {
+                id: uid("n"),
+                userId: siswaId,
+                kategori: "nilai",
+                judul: "Nilai LKPD telah diverifikasi",
+                isi: `${sub?.judul || "LKPD"}: nilai ${nilai ?? "—"} — sudah fiks. Lihat pada menu Nilai.`,
+                dibaca: false,
+                createdAt: nowIso(),
+              },
+              ...p,
+            ].slice(0, 200);
+            void persistShared("notifications", next, effective?.role);
+            return next;
+          });
+        }
       },
       resetDemo: () => {
         setMaterials(SEED_MATERIALS);

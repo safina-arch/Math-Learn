@@ -215,11 +215,17 @@ function Work() {
         </div>
       </Modal>
 
-      <Modal open={!!result} onClose={() => { setResult(null); router.push("/nilai"); }} title="Hasil penilaian sementara">
-        <p className="text-[44px] font-bold tracking-tight">{result?.nilai}</p>
-        <p className="muted">Pilihan ganda benar {result?.pgBenar} soal. Uraian & essay menunggu verifikasi guru sebelum menjadi nilai final.</p>
+      <Modal open={!!result} onClose={() => { setResult(null); router.push("/nilai"); }} title="🎉 Jawaban berhasil dikirim">
+        <div className="text-center py-1">
+          <p className="text-[44px] font-bold tracking-tight">{result?.nilai}</p>
+          <p className="muted">Pilihan ganda benar {result?.pgBenar} soal{a.tipe !== "latihan" ? ". Uraian & essay dibantu AI" : ""}.</p>
+        </div>
+        <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-center">
+          <p className="text-[15px] font-semibold text-amber-900">⏳ Nilai sedang menunggu untuk diverifikasi oleh guru</p>
+          <p className="text-[13px] text-amber-800 mt-1">Status kirimanmu: <b>Menunggu verifikasi</b> — nilai berubah menjadi fiks setelah guru menyetujuinya.</p>
+        </div>
         <div className="mt-4 flex gap-2">
-          <button className="btn-primary" onClick={() => router.push("/nilai")}>Lihat nilai</button>
+          <button className="btn-primary flex-1" onClick={() => router.push("/nilai")}>Lihat nilai & status</button>
           <button className="btn-ghost" onClick={() => setResult(null)}>Tetap di sini</button>
         </div>
       </Modal>

@@ -80,8 +80,9 @@ export default function KelolaLkpdPage() {
   };
   const hapusMission = (m: LkpdMission) => {
     if (!confirm(`Hapus mission "${m.judul}" beserta seluruh kontennya?`)) return;
+    const i = missions.findIndex((x) => x.id === m.id);
     ubahSub((ms) => ms.filter((x) => x.id !== m.id));
-    if (sel === m.id) setSel(null);
+    setSel(missions[i + 1]?.id || missions[i - 1]?.id || null);
   };
 
   const ubahBlok = (bid: string, patch: Partial<LkpdBlock>) => ubahMission({ blok: (mission?.blok || []).map((b) => (b.id === bid ? { ...b, ...patch } : b)) });
@@ -215,25 +216,27 @@ export default function KelolaLkpdPage() {
                     <div className="relative">
                       <button className="btn-primary !text-[13px]" onClick={() => setAddBlok((v) => !v)}>+ Add Content</button>
                       {addBlok ? (
-                        <div className="absolute z-20 mt-2 w-[260px] card shadow-pop p-1.5 grid grid-cols-1 gap-1">
-                          {JENIS_BLOK.map((t) => (
-                            <button
-                              key={t}
-                              className="text-left rounded-lg px-3 py-2 text-[13.5px] hover:bg-wash"
-                              onClick={() => {
-                                const b = blokBaru(t);
-                                ubahMission({ blok: [...(mission?.blok || []), b] });
-                                setAddBlok(false);
-                                setSel(mission.id);
-                              }}
-                            >
-                              {BLOCK_LABEL[t]}
-                            </button>
-                          ))}
-                        </div>
-                      ) : (
-                        <button className="fixed inset-0 z-10 cursor-default" aria-label="tutup menu" onClick={() => setAddBlok(false)} />
-                      )}
+                        <>
+                          {/* Backdrop hanya saat menu terbuka — tidak boleh menelan klik editor saat tertutup. */}
+                          <button className="fixed inset-0 z-10 bg-transparent cursor-default" aria-label="tutup menu" onClick={() => setAddBlok(false)} />
+                          <div className="absolute z-20 mt-2 w-[260px] card shadow-pop p-1.5 grid grid-cols-1 gap-1">
+                            {JENIS_BLOK.map((t) => (
+                              <button
+                                key={t}
+                                className="text-left rounded-lg px-3 py-2 text-[13.5px] hover:bg-wash"
+                                onClick={() => {
+                                  const b = blokBaru(t);
+                                  ubahMission({ blok: [...(mission?.blok || []), b] });
+                                  setAddBlok(false);
+                                  setSel(mission.id);
+                                }}
+                              >
+                                {BLOCK_LABEL[t]}
+                              </button>
+                            ))}
+                          </div>
+                        </>
+                      ) : null}
                     </div>
                   </>
                 )}

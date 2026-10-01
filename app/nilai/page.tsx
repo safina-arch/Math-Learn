@@ -5,6 +5,7 @@ import { Fragment, useState } from "react";
 import { AppShell, Guard } from "@/components/shell";
 import { ExportMenu } from "@/components/export-menu";
 import { Badge, Empty, PageHeader } from "@/components/ui";
+import { HasilLkpdGuru, barisHasil, statusHasil } from "@/components/lkpd/hasil";
 import { useStore } from "@/lib/store";
 import { fmtDateTime, STATUS_TUGAS_META, statusTugas, TIPE_LABEL, TIPE_TONE, TIPEURUT } from "@/lib/utils";
 import type { AssignmentType } from "@/lib/types";
@@ -128,25 +129,29 @@ function AdminGrades({ submissions, assignments, users }: { submissions: ReturnT
           </div>
         </div>
       )}
+
+      {/* Nilai hasil pengerjaan LKPD (learning journey) — verifikasi guru/admin. */}
+      <HasilLkpdGuru />
     </div>
   );
 }
 
 function Content() {
-  const { user, submissions, assignments, users } = useStore();
+  const { user, submissions, assignments, users, lkpdTopics, lkpdProgress } = useStore();
   if (user?.role === "admin") return <AdminGrades submissions={submissions} assignments={assignments} users={users} />;
 
-  // Siswa: hanya skor terakhir yang sudah diperiksa guru yang ditampilkan.
+  // Siswa: kiriman miliknya — status membedakan mana yang masih menunggu & mana yang sudah fiks.
   const mine = submissions.filter((s) => s.siswaId === user?.id && assignments.some((a) => a.id === s.assignmentId)).sort((a, b) => b.submittedAt.localeCompare(a.submittedAt));
   const graded = mine.filter((s) => s.status === "dinilai" && s.nilai != null);
   const last = graded[0] || null;
   const lastAssign = last ? assignments.find((a) => a.id === last.assignmentId) : null;
+  const lkpdRows = barisHasil(lkpdTopics, lkpdProgress, users).filter((r) => r.siswaId === user?.id);
 
   return (
     <div className="page-wrap !px-0 !pb-0 !max-w-none">
       <PageHeader
         title="Nilai & umpan balik"
-        desc="Skor terakhir yang sudah diperiksa guru tampil di sini. Kiriman yang belum diperiksa tidak ditampilkan."
+        desc="Kolom status menandai kiriman mana yang masih menunggu verifikasi guru dan mana yang sudah fiks."
       />
       <div className="grid sm:grid-cols-2 gap-3 mb-3">
         <div className="card card-pad">
@@ -159,6 +164,53 @@ function Content() {
           <p className="text-[26px] font-bold">{mine.length - graded.length}</p>
           <p className="muted">kiriman belum diperiksa</p>
         </div>
+      </div>
+
+      {/* Nilai LKPD (learning journey) siswa — lengkap dengan status verifikasi. */}
+      {lkpdRows.length ? (
+        <div className="card overflow-hidden mb-3">
+          <div className="px-4 py-2.5 border-b border-line text-[13px] font-semibold">📊 Nilai LKPD (Learning Journey)</div>
+          <div className="divide-y divide-line">
+            {lkpdRows.map((r) => {
+              const st = statusHasil(r);
+              return (
+                <div key={r.key} className="px-4 py-3 flex flex-wrap items-center gap-2">
+                  <div className="min-w-0">
+                    <p className="text-[14.5px] font-medium">{r.submateri}</p>
+                    <p className="muted !text-[12.5px]">{r.materi} · {r.progres} · {fmtDateTime(r.updatedAt)}</p>
+                  </div>
+                  <span className="ml-auto text-[22px] font-bold">{r.nilai ?? `${r.persen}%`}</span>
+                  <Badge tone={st.tone}>{st.label}</Badge>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+
+      {/* Riwayat kiriman — menunggu verifikasi vs sudah fiks. */}
+      <div className="card overflow-hidden mb-3">
+        <div className="px-4 py-2.5 border-b border-line text-[13px] font-semibold">📋 Riwayat kiriman (latihan · LKPD · evaluasi)</div>
+        {mine.length === 0 ? (
+          <p className="muted px-4 py-4">Belum ada kiriman — kerjakan latihan atau evaluasi untuk melihat hasilnya di sini.</p>
+        ) : (
+          <div className="divide-y divide-line">
+            {mine.map((s) => {
+              const a = assignments.find((x) => x.id === s.assignmentId);
+              const fiks = s.status === "dinilai" && s.nilai != null;
+              return (
+                <div key={s.id} className="px-4 py-3 flex flex-wrap items-center gap-2">
+                  <div className="min-w-0">
+                    <p className="text-[14.5px] font-medium">{a?.judul || <span className="italic text-ink-faint">Tugas sudah dihapus</span>}</p>
+                    <p className="muted !text-[12.5px]">{a ? TIPE_LABEL[a.tipe] : ""} · dikumpulkan {fmtDateTime(s.submittedAt)}</p>
+                  </div>
+                  <span className="ml-auto text-[20px] font-bold">{s.nilai ?? "—"}</span>
+                  <Badge tone={fiks ? "green" : "amber"}>{fiks ? "Sudah fiks ✓" : "Menunggu verifikasi guru"}</Badge>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {last && lastAssign ? (

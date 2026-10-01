@@ -1,9 +1,26 @@
 # Plan Revisi Math-Learn — Status Eksekusi
 
 Tanggal: 23 Sep – 1 Okt 2026 · Proyek: `mathlearn/` (Next.js 14 + Supabase + localStorage fallback)
-**Status: Gelombang 1–6 SELESAI & LIVE · Gelombang 6 LIVE (`7629559`) · Sistem LKPD scalable (Learning Journey) LIVE**
+**Status: Gelombang 1–7 SELESAI · Sistem LKPD scalable (Learning Journey) LIVE · Gelombang 7 (10 revisi LKPD) menunggu deploy**
 
 Legenda: ✅ selesai & terverifikasi · ⏳ menunggu kredensial (Supabase & Vercel token)
+
+---
+
+## Gelombang 7 — 10 revisi LKPD & alur nilai (1 Okt 2026) ✅ build lulus (27 route)
+
+| # | Revisi | Implementasi |
+|---|---|---|
+| 1 | Mission wajib berurutan | `/lkpd/[topik]/[sub]`: `batas` = jumlah mission awal yang berurutan selesai; timeline beranda 🔒 terkunci bila i > batas, tombol "Sebelumnya" tetap boleh (bolak-balik di tahap yang sudah terbuka) |
+| 2 | Jawaban tidak hilang saat bolak-balik | Refleksi **auto-save** tiap ketikan; ❓ pertanyaan simpan pilihan; 🧩 aktivitas simpan state (`diArea`/`pasang`/`val`+`dicek`) sebagai JSON di `LkpdProgress.jawaban` — tersimpan sampai siswa mengubahnya |
+| 3 | Guru/admin akses penuh | **Bug fix**: backdrop menu `+ Add Content` (`fixed inset-0 z-10`) dirender saat menu tertutup → menelan semua klik halaman kelola (penyebab "tidak bisa mengubah isi"). Kini backdrop hanya saat menu terbuka · tombol **Hapus materi** kini juga untuk guru · `persistShared` diperkuat (retry + jendela `pendingUntil` agar edit tidak tertimpa GET in-flight) |
+| 4 | Hapus keterangan "Tugas LKPD" | Section daftar tugas di `/lkpd` dihapus — cukup Learning Journey Hub saja (route `/tugas/[id]` & `/latihan` tetap utuh) |
+| 5 | Notifikasi tersebar | Materi baru → `all-siswa` · submateri baru → `all-siswa` · siswa tuntas LKPD → `all-guru` · nilai LKPD diverifikasi → notifikasi ke siswa tersebut |
+| 6 | Link YouTube terhubung | `youtubeEmbed()` (watch/youtu.be/shorts/embed → `youtube.com/embed/ID`) dipakai di blok 🎥 video LKPD & `m.videoUrl` halaman materi |
+| 7 | Link Drive tidak bisa preview | `isDriveUrl()` + `drivePreviewUrl()` (`…/file/d/ID/view` → `…/preview`) + tombol "Buka di Google Drive (tab baru)" sebagai fallback izin · blok 🖼️ gambar Drive juga dibuka di tab baru |
+| 8 | Nilai LKPD muncul di guru & admin | `LkpdProgress.nilai` (0–100, terisi saat semua mission tuntas) + `verifikasi` · komponen `components/lkpd/hasil.tsx` → tabel **"📊 Nilai LKPD (Learning Journey)"** di `/periksa` (guru/admin) & `/nilai` (admin), lengkap tombol **Verifikasi / Batalkan** |
+| 9 | Drag pekerja belum jalan | `onDragStart` kini `setData("text/plain")` + `effectAllowed` (Firefox/Chrome wajib), `onDrop` membaca `getData`, sorot area saat drag, fallback **klik kartu** dipertegas dengan hint "Seret / klik" |
+| 10 | Popup pasca-kerjakan + status nilai | Pop-up usai kumpulkan tugas (`/tugas/[id]`) & evaluasi (`/evaluasi/[id]`) kini memakai panel amber **"⏳ Nilai sedang menunggu untuk diverifikasi oleh guru"**; halaman `/nilai` siswa menambah **📋 Riwayat kiriman** (badge *Menunggu verifikasi guru* vs *Sudah fiks ✓*) + kartu **📊 Nilai LKPD** per siswa; perayaan selesai LKPD menampilkan nilai + status menunggu verifikasi |
 
 ---
 
@@ -21,8 +38,8 @@ LKPD kini fitur **global berbasis materi** (bukan halaman khusus Perbandingan). 
 | Content block | `components/lkpd/blocks.tsx` — 📝 teks, 🖼️ gambar, 🎥 video, 🎞️ animasi, 📎 berkas, ❓ pertanyaan (feedback edukatif + petunjuk progresif), 🧩 aktivitas, 💡 hint (bertahap), 💬 refleksi (tersimpan per siswa) |
 | Progress | Per submateri (✓/○ per mission → %) → rata-rata ke topik → tampil sebagai progress & status (Belum dimulai/Sedang dipelajari/Selesai) + tombol Mulai/Lanjutkan/Lihat di hub |
 | Kelola guru/admin | `components/lkpd/block-editor.tsx` + halaman kelola: tambah/ubah/hapus/urut mission (default 5 tahap, misi tambahan boleh), editor per blok termasuk aktivitas & pertanyaan, **👁 Preview** mode siswa sebelum **💾 Save** / ↩ Batal |
-| Navigasi | Sidebar 📚 LKPD tetap sama untuk 3 role; bagian bawah hub mempertahankan **Tugas LKPD** lama (pengumpulan bernilai) tanpa perubahan perilaku `/tugas/[id]` |
-| Role | Siswa hanya membaca/mengerjakan (tanpa tombol kelola; `/kelola` mission di-Guard) · Guru kelola materi/submateri/mission/konten · Admin + hapus materi |
+| Navigasi | Sidebar 📚 LKPD tetap sama untuk 3 role; halaman `/lkpd` khusus Learning Journey (section "Tugas LKPD" dihapus pada Gelombang 7) |
+| Role | Siswa hanya membaca/mengerjakan (mission berurutan, tanpa tombol kelola) · Guru & Admin akses penuh: kelola materi/submateri/mission/konten + hapus materi + verifikasi nilai |
 
 ---
 

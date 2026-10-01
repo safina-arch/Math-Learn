@@ -376,11 +376,14 @@ function Exam() {
         <button className="btn-primary mt-4 w-full" onClick={() => setWarn(null)}>Saya mengerti, kembali mengerjakan</button>
       </Modal>
 
-      <Modal open={done !== null} onClose={() => router.push("/nilai")} title="Ujian terkumpul">
-        <p className="text-[18px] font-semibold">Jawaban berhasil dikumpulkan.</p>
-        <p className="muted mt-1">Nilai akan diumumkan setelah guru selesai memeriksa jawaban{cheatRef.current ? ` · ${cheatRef.current} catatan perpindahan laman diteruskan ke guru` : ""}.</p>
+      <Modal open={done !== null} onClose={() => router.push("/nilai")} title="🎉 Ujian terkumpul">
+        <p className="text-[18px] font-semibold text-center">Jawaban berhasil dikumpulkan.</p>
+        <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-center">
+          <p className="text-[15px] font-semibold text-amber-900">⏳ Nilai sedang menunggu untuk diverifikasi oleh guru</p>
+          <p className="text-[13px] text-amber-800 mt-1">Status: <b>Menunggu verifikasi</b> — nilai berubah fiks setelah guru menyetujuinya{cheatRef.current ? ` · ${cheatRef.current} catatan perpindahan laman diteruskan ke guru` : ""}.</p>
+        </div>
         <div className="mt-4 flex gap-2">
-          <button className="btn-primary" onClick={() => router.push("/nilai")}>Lihat nilai</button>
+          <button className="btn-primary flex-1" onClick={() => router.push("/nilai")}>Lihat nilai & status</button>
           <button className="btn-ghost" onClick={() => router.push("/evaluasi")}>Kembali</button>
         </div>
       </Modal>

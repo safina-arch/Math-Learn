@@ -19,11 +19,24 @@ import type { LkpdTopic } from "@/lib/types";
  * tidak ada daftar materi yang di-hard-code di sini.
  */
 export function LkpdHub() {
-  const { lkpdTopics, lkpdProgress, user, upsertLkpdTopic, deleteLkpdTopic } = useStore();
+  const { lkpdTopics, lkpdProgress, user, upsertLkpdTopic, deleteLkpdTopic, addNotification } = useStore();
   const router = useRouter();
   const [modal, setModal] = useState<null | "baru" | LkpdTopic>(null);
   const manage = user?.role === "guru" || user?.role === "admin";
-  const isAdmin = user?.role === "admin";
+
+  /** Simpan topik; materi baru otomatis memberi notifikasi ke seluruh siswa. */
+  const simpanTopik = (t: LkpdTopic) => {
+    const baru = !lkpdTopics.some((x) => x.id === t.id);
+    upsertLkpdTopic(t);
+    if (baru) {
+      addNotification({
+        userId: "all-siswa",
+        kategori: "pengumuman",
+        judul: `Materi LKPD baru: ${t.judul}`,
+        isi: t.deskripsi || `Materi ${t.judul} sudah tersedia. Buka menu LKPD untuk memulai learning journey.`,
+      });
+    }
+  };
 
   return (
     <div>
@@ -67,12 +80,10 @@ export function LkpdHub() {
                   {manage ? (
                     <div className="ml-auto flex gap-2">
                       <button className="btn-ghost !py-1.5 !text-[12.5px]" onClick={() => setModal(t)}>Ubah</button>
-                      {isAdmin ? (
-                        <button
-                          className="btn-danger !py-1.5 !text-[12.5px]"
-                          onClick={() => { if (confirm(`Hapus materi "${t.judul}" beserta seluruh submateri & progresnya?`)) deleteLkpdTopic(t.id); }}
-                        >Hapus</button>
-                      ) : null}
+                      <button
+                        className="btn-danger !py-1.5 !text-[12.5px]"
+                        onClick={() => { if (confirm(`Hapus materi "${t.judul}" beserta seluruh submateri & progresnya?`)) deleteLkpdTopic(t.id); }}
+                      >Hapus</button>
                     </div>
                   ) : null}
                 </div>
@@ -87,7 +98,7 @@ export function LkpdHub() {
         initial={modal === "baru" ? null : modal}
         existingIds={lkpdTopics.map((t) => t.id)}
         onClose={() => setModal(null)}
-        onSave={upsertLkpdTopic}
+        onSave={simpanTopik}
       />
     </div>
   );

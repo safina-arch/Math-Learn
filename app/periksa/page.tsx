@@ -4,6 +4,7 @@ import { Fragment, useState } from "react";
 import { AppShell, Guard } from "@/components/shell";
 import { ExportMenu } from "@/components/export-menu";
 import { Badge, Empty, Modal, PageHeader, Stat } from "@/components/ui";
+import { HasilLkpdGuru } from "@/components/lkpd/hasil";
 import { useStore } from "@/lib/store";
 import { fmtDateTime, STATUS_TUGAS_META, statusRingkasan, statusTugas, TIPE_LABEL, TIPE_TONE, TIPEURUT } from "@/lib/utils";
 import type { AssignmentType } from "@/lib/types";
@@ -175,6 +176,9 @@ function Content() {
           </div>
         </div>
       )}
+
+      {/* Nilai hasil pengerjaan LKPD (learning journey) siswa — menunggu & sudah diverifikasi. */}
+      <HasilLkpdGuru />
 
       {/* Laporan kecurangan dipindah ke halaman sendiri: menu "Laporan kecurangan" pada sidebar. */}
 

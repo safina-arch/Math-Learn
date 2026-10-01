@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { LkpdBlock } from "@/lib/types";
+import { drivePreviewUrl, isDriveUrl, youtubeEmbed } from "@/lib/utils";
 import { Aktivitas } from "./activities";
 
 /** Tooltip ikon tipe blok untuk editor/preview. */
@@ -39,7 +40,12 @@ export function BlokRenderer({
     case "gambar":
       return (
         <figure className="card overflow-hidden">
-          {blok.url ? (
+          {blok.url && isDriveUrl(blok.url) ? (
+            <a href={blok.url} target="_blank" rel="noreferrer" className="flex h-[170px] w-full flex-col items-center justify-center gap-1 bg-gradient-to-br from-primary-50 to-wash border-b border-line text-center px-6">
+              <span className="text-[26px]">🖼️</span>
+              <span className="text-[13.5px] text-ink-muted">Pratinjau Drive memerlukan izin pemilik — klik untuk membuka di tab baru</span>
+            </a>
+          ) : blok.url ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={blok.url} alt={blok.teks || "Gambar"} className="w-full max-h-[340px] object-cover" />
           ) : (
@@ -56,9 +62,22 @@ export function BlokRenderer({
         <div className="card card-pad">
           {blok.judul ? <p className="text-[14.5px] font-semibold mb-2">🎥 {blok.judul}</p> : null}
           {blok.url ? (
-            <div className="aspect-video w-full rounded-lg overflow-hidden border border-line">
-              <iframe src={blok.url} className="w-full h-full" allowFullScreen title={blok.judul || "Video"} />
-            </div>
+            isDriveUrl(blok.url) ? (
+              // Tautan Drive: preview iframe hanya bila izin "siapa pun dengan tautan".
+              // Jika tidak, siswa tetap bisa membuka di tab baru.
+              <div className="space-y-2">
+                <div className="aspect-video w-full rounded-lg overflow-hidden border border-line bg-wash">
+                  <iframe src={drivePreviewUrl(blok.url)} className="w-full h-full border-0" allowFullScreen title={blok.judul || "Berkas Drive"} />
+                </div>
+                <a href={blok.url} target="_blank" rel="noreferrer" className="btn-ghost !py-1.5 !text-[12.5px] inline-flex">
+                  📂 Buka di Google Drive (tab baru) — bila pratinjau kosong, izin berkas dibatasi pemilik
+                </a>
+              </div>
+            ) : (
+              <div className="aspect-video w-full rounded-lg overflow-hidden border border-line">
+                <iframe src={youtubeEmbed(blok.url)} className="w-full h-full" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen title={blok.judul || "Video"} />
+              </div>
+            )
           ) : (
             <div className="aspect-video w-full rounded-lg border border-dashed border-line bg-wash flex items-center justify-center">
               <span className="text-[13px] text-ink-faint">🎬 Video — tautan belum dipasang</span>
@@ -103,13 +122,13 @@ export function BlokRenderer({
       return <Refleksi blok={blok} jawaban={jawaban} onSimpan={onSimpan} />;
 
     case "pertanyaan":
-      return <Pertanyaan blok={blok} />;
+      return <Pertanyaan blok={blok} jawaban={jawaban} onSimpan={onSimpan} />;
 
     case "aktivitas":
       return blok.aktivitas ? (
         <div>
           {blok.judul ? <p className="text-[14.5px] font-semibold mb-1.5">{blok.judul}</p> : null}
-          <Aktivitas a={blok.aktivitas} />
+          <Aktivitas a={blok.aktivitas} nilai={jawaban} onNilai={onSimpan} />
         </div>
       ) : null;
 
@@ -140,7 +159,7 @@ function Petunjuk({ blok }: { buka?: boolean; blok: LkpdBlock }) {
 
 function Refleksi({ blok, jawaban, onSimpan }: { blok: LkpdBlock; jawaban?: string; onSimpan?: (t: string) => void }) {
   const [v, setV] = useState(jawaban || "");
-  const [tersimpan, setTersimpan] = useState(false);
+  const [tersimpan, setTersimpan] = useState(true);
   return (
     <div className="card card-pad">
       <p className="text-[14.5px] font-semibold mb-1">💬 {blok.judul || "Refleksi"}</p>
@@ -149,22 +168,36 @@ function Refleksi({ blok, jawaban, onSimpan }: { blok: LkpdBlock; jawaban?: stri
         className="input min-h-[110px]"
         value={v}
         placeholder="Tulis jawaban / refleksimu di sini…"
-        onChange={(e) => { setV(e.target.value); setTersimpan(false); }}
+        onChange={(e) => {
+          setV(e.target.value);
+          // Simpan otomatis — jawaban tetap ada walau siswa berpindah mission lalu kembali.
+          onSimpan?.(e.target.value);
+          setTersimpan(true);
+        }}
       />
-      <div className="flex items-center gap-2 mt-2">
-        <button className="btn-primary !py-1.5 !text-[13px]" onClick={() => { onSimpan?.(v); setTersimpan(true); }}>Simpan jawaban</button>
-        {tersimpan ? <span className="text-[12.5px] text-green-700">Tersimpan ✓</span> : null}
-      </div>
+      <p className={`mt-2 text-[12.5px] ${tersimpan ? "text-green-700" : "text-ink-faint"}`}>
+        {tersimpan ? "✓ Jawaban tersimpan otomatis — aman berpindah mission" : "Menyimpan…"}
+      </p>
     </div>
   );
 }
 
-/** Pertanyaan pilihan ganda dengan feedback edukatif + petunjuk progresif. */
-function Pertanyaan({ blok }: { blok: LkpdBlock }) {
+/** Pertanyaan pilihan ganda dengan feedback edukatif + petunjuk progresif.
+ *  Pilihan siswa ikut tersimpan di progres → bolak-balik mission tidak menghapusnya. */
+function Pertanyaan({ blok, jawaban, onSimpan }: { blok: LkpdBlock; jawaban?: string; onSimpan?: (t: string) => void }) {
   const q = blok.pertanyaan;
-  const [pilih, setPilih] = useState<number | null>(null);
+  const awalPilih = (() => {
+    if (jawaban === undefined || jawaban === "") return null;
+    const n = Number(jawaban);
+    return Number.isInteger(n) && n >= 0 ? n : null;
+  })();
+  const [pilih, setPilih] = useState<number | null>(awalPilih);
   const [hint, setHint] = useState(0);
   if (!q) return null;
+  const pilihDanSimpan = (i: number) => {
+    setPilih(i);
+    onSimpan?.(String(i));
+  };
   const dipilih = pilih !== null ? q.opsi[pilih] : null;
   const benar = Boolean(dipilih?.benar);
   const hints = q.petunjuk || [];
@@ -183,7 +216,7 @@ function Pertanyaan({ blok }: { blok: LkpdBlock }) {
               ? o.benar ? "border-green-300 bg-green-50" : "border-red-300 bg-red-50"
               : o.benar ? "border-green-200 bg-green-50/50" : "border-line bg-white opacity-70";
           return (
-            <button key={i} className={`w-full text-left rounded-lg border px-3.5 py-2.5 text-[13.5px] transition-colors ${gaya}`} onClick={() => setPilih(i)}>
+            <button key={i} className={`w-full text-left rounded-lg border px-3.5 py-2.5 text-[13.5px] transition-colors ${gaya}`} onClick={() => pilihDanSimpan(i)}>
               <span className="font-medium">{String.fromCharCode(65 + i)}.</span> {o.teks}
               {setelah && dipilihIni && o.benar ? <span className="text-green-700 font-semibold"> ✓</span> : null}
             </button>

@@ -256,7 +256,11 @@ export interface LkpdProgress {
   subtopicId: string;
   /** Id mission yang sudah ditandai selesai. */
   missions: string[];
-  /** Jawaban blok refleksi per blockId (agar tidak hilang saat pindah mission). */
+  /** Jawaban per blockId (refleksi = teks; aktivitas/pertanyaan = JSON) — bertahan saat siswa bolak-balik. */
   jawaban: Record<string, string>;
+  /** Nilai hasil pengerjaan (0–100) — terisi saat seluruh mission selesai. */
+  nilai?: number;
+  /** Tandai verifikasi guru/admin atas nilai LKPD. */
+  verifikasi?: boolean;
   updatedAt: string;
 }

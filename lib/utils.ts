@@ -107,6 +107,47 @@ export function statusTugas(sub?: { status: string } | null): StatusTugas {
   return sub.status === "dinilai" ? "sudah" : "belum-diperiksa";
 }
 
+/**
+ * Ubah tautan YouTube apa pun (watch / youtu.be / shorts / embed) menjadi
+ * URL embed resmi — agar video langsung terhubung & bisa diputar di halaman.
+ */
+export function youtubeEmbed(url: string): string {
+  const u = (url || "").trim();
+  if (!u) return "";
+  if (/youtube\.com\/embed\//.test(u)) return u;
+  const id = u.match(/(?:youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|embed\/|live\/)|youtu\.be\/)([A-Za-z0-9_-]{6,20})/);
+  if (id) return `https://www.youtube.com/embed/${id[1]}`;
+  return u;
+}
+
+/** Deteksi tautan Google Drive (docs.google.com / drive.google.com). */
+export function isDriveUrl(url: string): boolean {
+  return /(?:drive\.google\.com|docs\.google\.com)/i.test(url || "");
+}
+
+/**
+ * Normalisasi tautan Google Drive ke bentuk preview-embed.
+ * `…/file/d/ID/view?usp=sharing` → `…/file/d/ID/preview`.
+ * Catatan: preview hanya tampil bila izin Drive mengizinkan "siapa pun yang punya tautan".
+ */
+export function drivePreviewUrl(url: string): string {
+  const u = (url || "").trim();
+  const id = u.match(/\/d\/([A-Za-z0-9_-]{20,})/);
+  if (id) return `https://drive.google.com/file/d/${id[1]}/preview`;
+  const uc = u.match(/[?&]id=([A-Za-z0-9_-]{20,})/);
+  if (uc) return `https://drive.google.com/file/d/${uc[1]}/preview`;
+  return u.replace(/\/view(\?.*)?$/, "/preview");
+}
+
+/** Nama tampilan media: dipakai untuk label tombol "buka di tab baru". */
+export function domainLabel(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return "tautan";
+  }
+}
+
 /** Status ketersediaan evaluasi: dikunci manual, belum waktunya, terbuka, atau sudah lewat. */
 export type JendelaEvaluasi = "kunci-manual" | "belum-buka" | "buka" | "lewat-waktu";
 export const JENDELA_META: Record<JendelaEvaluasi, { label: string; tone: "gray" | "amber" | "green" | "red" }> = {

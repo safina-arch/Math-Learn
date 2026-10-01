@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { AppShell, Guard } from "@/components/shell";
 import { Badge } from "@/components/ui";
 import { useStore } from "@/lib/store";
+import { drivePreviewUrl, isDriveUrl, youtubeEmbed } from "@/lib/utils";
 
 function renderInline(text: string) {
   const parts = text.split(/(`[^`]+`)/g);
@@ -71,9 +72,21 @@ function Detail() {
       {m.videoUrl ? (
         <div className="card overflow-hidden mt-5">
           <div className="px-4 py-2.5 border-b border-line text-[13px] font-medium">Video pembelajaran</div>
-          <div className="aspect-video bg-black">
-            <iframe src={m.videoUrl} title={m.judul} className="w-full h-full" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen />
-          </div>
+          {isDriveUrl(m.videoUrl) ? (
+            // Tautan Google Drive: iframe pratinjau hanya tampil bila izin Drive mengizinkan.
+            <div className="p-3 space-y-2">
+              <div className="aspect-video bg-wash border border-line rounded-lg overflow-hidden">
+                <iframe src={drivePreviewUrl(m.videoUrl)} title={m.judul} className="w-full h-full border-0" allowFullScreen />
+              </div>
+              <a className="btn-ghost !py-1.5 !text-[12.5px]" href={m.videoUrl} target="_blank" rel="noreferrer">
+                📂 Buka di Google Drive — bila pratinjau kosong, akses berkas dibatasi pemiliknya
+              </a>
+            </div>
+          ) : (
+            <div className="aspect-video bg-black">
+              <iframe src={youtubeEmbed(m.videoUrl)} title={m.judul} className="w-full h-full" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen />
+            </div>
+          )}
         </div>
       ) : null}
 

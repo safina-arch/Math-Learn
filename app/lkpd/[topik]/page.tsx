@@ -20,7 +20,7 @@ import type { LkpdSubtopic } from "@/lib/types";
 export default function TopikPage() {
   const params = useParams<{ topik: string }>();
   const router = useRouter();
-  const { lkpdTopics, lkpdProgress, user, upsertLkpdTopic, ready } = useStore();
+  const { lkpdTopics, lkpdProgress, user, upsertLkpdTopic, addNotification, ready } = useStore();
   const topik = lkpdTopics.find((t) => t.id === params.topik);
   const [modal, setModal] = useState<null | "baru" | LkpdSubtopic>(null);
   const manage = user?.role === "guru" || user?.role === "admin";
@@ -43,6 +43,15 @@ export default function TopikPage() {
       ...topik,
       subtopics: ada ? topik.subtopics.map((x) => (x.id === s.id ? s : x)) : [...topik.subtopics, s],
     });
+    // Notifikasi tersbar ke seluruh siswa saat submateri baru terbit.
+    if (!ada) {
+      addNotification({
+        userId: "all-siswa",
+        kategori: "pengumuman",
+        judul: `Submateri baru: ${s.judul}`,
+        isi: `Ditambahkan pada materi ${topik.judul}. Buka menu LKPD untuk mengerjakan learning journey-nya.`,
+      });
+    }
   };
 
   const hapusSub = (s: LkpdSubtopic) => {
