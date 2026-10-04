@@ -132,7 +132,9 @@ async function persistShared(resource: string, data: unknown[], role?: string) {
       // PERPANJANG: GET yang sudah terlanjur berangkat sebelum POST selesai
       // tiba 1–2 detik kemudian dengan data lama — jangan sampai menimpa edit.
       pendingUntil[resource] = Date.now() + 3000;
-      delete antreanTulis[resource];
+      // Hapus dari antrean hanya bila yang baru saja sukses adalah payload yang
+      // sama — tulisan lebih baru (antrean berbeda) tetap dipertahankan.
+      if (antreanTulis[resource]?.data === data) delete antreanTulis[resource];
     } else if (!res || res.status >= 500) {
       antreanTulis[resource] = { data, role };
     }

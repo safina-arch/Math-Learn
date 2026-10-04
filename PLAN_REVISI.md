@@ -1,9 +1,23 @@
 # Plan Revisi Math-Learn — Status Eksekusi
 
 Tanggal: 23 Sep – 1 Okt 2026 · Proyek: `mathlearn/` (Next.js 14 + Supabase + localStorage fallback)
-**Status: Gelombang 1–7 SELESAI · Sistem LKPD scalable (Learning Journey) LIVE · Gelombang 7 (10 revisi LKPD) menunggu deploy**
+**Status: Gelombang 1–8 SELESAI · Sistem LKPD scalable (Learning Journey) LIVE · Gelombang 8 (5 revisi) LIVE**
 
 Legenda: ✅ selesai & terverifikasi · ⏳ menunggu kredensial (Supabase & Vercel token)
+
+---
+
+## Gelombang 8 — 5 revisi (4 Okt 2026) ✅ build lulus (27 route) · LIVE
+
+| # | Revisi | Implementasi |
+|---|---|---|
+| 1 | Bersihkan seluruh history notifikasi dari awal sampai detik ini | Aksi `bersihkanNotifikasi()` di `lib/store.tsx` (isi `notifications = []` + tulis array kosong ke server → perangkat lain ikut bersih pada GET 5 detik berikutnya) + tombol **🗑 Bersihkan** (khusus guru/admin, ada `confirm`) di panel lonceng `components/shell.tsx`; **history produksi sudah di-wipe** (POST `/api/sync` `notifications: []` → terverifikasi `jumlah=0`) |
+| 2 | Tulisan "Video pembelajaran" pada materi disesuaikan dengan tipe file yang diunggah guru/admin | Helper `labelMediaMateri(url, pendek?)` di `lib/utils.ts` — YouTube → "Video pembelajaran · YouTube", Google Drive → "Pratinjau Google Drive", mp4/webm/mov → "Video pembelajaran", pdf → "Dokumen PDF", gambar → "Gambar materi", ppt/doc/xls/csv → "Berkas materi", selain itu "Tautan media" — dipakai di judul slot `app/materi/[id]` + badge kartu `app/materi` (versi pendek); label input `material-modal.tsx` → "URL media (YouTube / Google Drive / tautan file, opsional)" |
+| 3 | Nilai hasil pengerjaan siswa belum sinkron dengan data guru & admin | Akar masalah: row **`lkpdTopics` & `lkpdProgress` tidak pernah tersimpan** di `app_state` (server cuma punya 8 key) dan POST yang gagal-jaringan tidak pernah diulang → (a) **antrean tulis ulang** `antreanTulis` + `tulisGagal()` dipanggil tiap siklus 5 detik (gagal permanen 400/403 tidak diulang; guard referensi payload agar tulisan lebih baru tidak terhapus); (b) **bootstrap** — bila server belum punya row LKPD, klien guru/admin unggah katalog & klien dengan data lokal unggah progres; (c) **merge saat GET** `gabungProgress()` (kunci `siswaId+submateriId`, `updatedAt` terbaru menang) → server ∪ lokal lalu ditulis balik bila berbeda |
+| 4 | Penilaian LKPD per sub-bab (submateri), bukan per materi saja | Kartu submateri di `/lkpd/[topik]` kini punya strip **"Nilai sub-bab"**: siswa → nilai sendiri + badge *Menunggu verifikasi / Terverifikasi ✓*; guru/admin → **rata-rata nilai sub-bab**, "n dari X siswa dinilai", + badge jumlah yang menunggu verifikasi (tabel `HasilLkpdGuru` tetap per siswa × submateri) |
+| 5 | Pop-up "hasil sedang menunggu diverifikasi guru" setelah siswa mengerjakan lkpd/latihan/evaluasi | LKPD journey (`/lkpd/[topik]/[sub]`): kartu perayaan inline diganti **Modal** 🎉 "LKPD selesai!" berisi nilai + panel amber **"⏳ Hasil sedang menunggu diverifikasi oleh guru"** + tombol *Lihat nilai & status* / *Pilih submateri lain*; latihan (`/tugas/[id]`) & evaluasi (`/evaluasi/[id]`) sudah memakai pop-up amber sejak Gelombang 7 |
+
+Verifikasi: `npm.cmd run build` ✅ (lint + type, 27 route) → push → Vercel READY (`dpl_54WMK1RE4cyCPJnYv5Adx5nm3hNa`, sha `9a558cc`) → 7 route 200 (`/`, `/materi`, `/lkpd`, `/nilai`, `/lkpd/perbandingan/pb-dasar`, `/periksa`, `/latihan`) → string produksi di chunk JS: `Bersihkan SELURUH history notifikasi` ✓, `Pratinjau Google Drive` ✓, `Video pembelajaran \xb7 YouTube` ✓, `Nilai sub-bab` ✓, `Hasil sedang menunggu diverifikasi oleh guru` ✓, `URL media (YouTube / Google Drive / tautan file, opsional)` ✓.
 
 ---
 
