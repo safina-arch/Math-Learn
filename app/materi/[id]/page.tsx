@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import { AppShell, Guard } from "@/components/shell";
 import { Badge } from "@/components/ui";
 import { useStore } from "@/lib/store";
-import { drivePreviewUrl, isDriveUrl, youtubeEmbed } from "@/lib/utils";
+import { drivePreviewUrl, isDriveUrl, labelMediaMateri, youtubeEmbed } from "@/lib/utils";
 
 function renderInline(text: string) {
   const parts = text.split(/(`[^`]+`)/g);
@@ -71,7 +71,7 @@ function Detail() {
 
       {m.videoUrl ? (
         <div className="card overflow-hidden mt-5">
-          <div className="px-4 py-2.5 border-b border-line text-[13px] font-medium">Video pembelajaran</div>
+          <div className="px-4 py-2.5 border-b border-line text-[13px] font-medium">{labelMediaMateri(m.videoUrl)}</div>
           {isDriveUrl(m.videoUrl) ? (
             // Tautan Google Drive: iframe pratinjau hanya tampil bila izin Drive mengizinkan.
             <div className="p-3 space-y-2">

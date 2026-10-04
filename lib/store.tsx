@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
+import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type {
   AcademicEvent,
   Announcement,
@@ -54,6 +54,8 @@ interface Store {
   deleteAnnouncement: (id: string) => void;
   addNotification: (n: Omit<Notification, "id" | "createdAt" | "dibaca">) => void;
   markAllRead: (userId: string) => void;
+  /** Bersihkan SELURUH history notifikasi (semua pengguna, dari awal sampai sekarang). */
+  bersihkanNotifikasi: () => void;
   addCheatLog: (l: Omit<CheatLog, "id" | "timestamp">) => void;
   upsertUser: (u: Account) => void;
   deleteUser: (id: string) => void;
@@ -98,6 +100,18 @@ function load<T>(k: string, fallback: T): T {
  */
 const pendingUntil: Record<string, number> = {};
 
+/** true bila resource ini baru saja ditulis → GET harus mengabaikan datanya. */
+function sedangDitulis(resource: string): boolean {
+  return Date.now() < (pendingUntil[resource] || 0);
+}
+
+/**
+ * Antrean tulis ulang: POST yang gagal karena jaringan tidak boleh hilang diam-diam
+ * (penyebab nilai siswa tidak sampai ke guru/admin). Resource dicoba lagi pada
+ * siklus sinkron berikutnya. Gagal permanen (400/403) tidak diulang.
+ */
+const antreanTulis: Record<string, { data: unknown[]; role?: string }> = {};
+
 async function persistShared(resource: string, data: unknown[], role?: string) {
   pendingUntil[resource] = Date.now() + 5000;
   const kirim = () =>
@@ -105,6 +119,7 @@ async function persistShared(resource: string, data: unknown[], role?: string) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ resource, data, role }),
+      keepalive: true,
     });
   try {
     let res: Response | null = null;
@@ -117,15 +132,33 @@ async function persistShared(resource: string, data: unknown[], role?: string) {
       // PERPANJANG: GET yang sudah terlanjur berangkat sebelum POST selesai
       // tiba 1–2 detik kemudian dengan data lama — jangan sampai menimpa edit.
       pendingUntil[resource] = Date.now() + 3000;
+      delete antreanTulis[resource];
+    } else if (!res || res.status >= 500) {
+      antreanTulis[resource] = { data, role };
     }
   } catch {
-    // Mode lokal tetap memakai localStorage ketika server tidak tersedia.
+    antreanTulis[resource] = { data, role };
   }
 }
 
-/** true bila resource ini baru saja ditulis → GET harus mengabaikan datanya. */
-function sedangDitulis(resource: string): boolean {
-  return Date.now() < (pendingUntil[resource] || 0);
+/** Coba ulang seluruh resource yang gagal tadi — dipanggil tiap siklus sinkron. */
+function tulisGagal() {
+  for (const [resource, w] of Object.entries(antreanTulis)) void persistShared(resource, w.data, w.role);
+}
+
+/**
+ * Gabung progres LKPD dari server & lokal: kunci `siswaId+submateriId`, entri
+ * `updatedAt` terbaru menang — tulisan perangkat lain tidak saling menghapus.
+ */
+function gabungProgress(server: LkpdProgress[], lokal: LkpdProgress[]): LkpdProgress[] {
+  const out = new Map<string, LkpdProgress>();
+  for (const p of server) out.set(`${p.siswaId}:${p.subtopicId}`, p);
+  for (const p of lokal) {
+    const k = `${p.siswaId}:${p.subtopicId}`;
+    const ada = out.get(k);
+    if (!ada || (p.updatedAt || "") > (ada.updatedAt || "")) out.set(k, p);
+  }
+  return Array.from(out.values());
 }
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
@@ -143,6 +176,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [lkpdTopics, setLkpdTopics] = useState<LkpdTopic[]>(SEED_LKPD_TOPICS);
   const [lkpdProgress, setLkpdProgress] = useState<LkpdProgress[]>([]);
   const [ready, setReady] = useState(false);
+
+  /**
+   * Snapshot data lokal terkini (progres/katalog LKPD + peran) untuk efek sinkron —
+   * sengaja pakai ref agar interval 5-detik tidak dibuat ulang tiap perubahan state.
+   */
+  const lokalRef = useRef<{ progress: LkpdProgress[]; topik: LkpdTopic[]; role?: string }>({ progress: [], topik: [], role: undefined });
+  useEffect(() => {
+    lokalRef.current = { progress: lkpdProgress, topik: lkpdTopics, role: (impersonating || user)?.role };
+  });
 
   useEffect(() => {
     const storedAccounts = load<Account[]>(ACCOUNTS_KEY, AUTH_USERS);
@@ -171,6 +213,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     if (!ready) return;
     let active = true;
     async function syncShared() {
+      tulisGagal(); // resource yang POST-nya gagal tadi dicoba ulang
       try {
         const response = await fetch("/api/sync", { cache: "no-store" });
         if (response.ok && active) {
@@ -185,8 +228,26 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
             if (Array.isArray(data.cheatLogs) && !sedangDitulis("cheatLogs")) setCheatLogs(data.cheatLogs as CheatLog[]);
             if (Array.isArray(data.events) && !sedangDitulis("events")) setEvents(data.events as AcademicEvent[]);
             if (Array.isArray(data.users) && !sedangDitulis("users")) setAccounts(data.users as Account[]);
-            if (Array.isArray(data.lkpdTopics) && !sedangDitulis("lkpdTopics")) setLkpdTopics(data.lkpdTopics as LkpdTopic[]);
-            if (Array.isArray(data.lkpdProgress) && !sedangDitulis("lkpdProgress")) setLkpdProgress(data.lkpdProgress as LkpdProgress[]);
+            // Katalog LKPD: server menang — tapi bila barisnya belum pernah ada,
+            // guru/admin mengunggah miliknya agar edit tidak terkunci di localStorage.
+            if (Array.isArray(data.lkpdTopics) && !sedangDitulis("lkpdTopics")) {
+              setLkpdTopics(data.lkpdTopics as LkpdTopic[]);
+            } else if (!Array.isArray(data.lkpdTopics) && !sedangDitulis("lkpdTopics") && lokalRef.current.role !== "siswa" && lokalRef.current.topik.length) {
+              void persistShared("lkpdTopics", lokalRef.current.topik, lokalRef.current.role);
+            }
+            // Progres & nilai LKPD: gabung server ∪ lokal (updatedAt terbaru menang) lalu
+            // tulis balik bila ada data lokal yang belum sampai — inilah sinkronisasi
+            // nilai siswa ke halaman guru/admin.
+            if (Array.isArray(data.lkpdProgress) && !sedangDitulis("lkpdProgress")) {
+              const serverRows = data.lkpdProgress as LkpdProgress[];
+              const gabung = gabungProgress(serverRows, lokalRef.current.progress);
+              setLkpdProgress(gabung);
+              if (JSON.stringify(gabung) !== JSON.stringify(serverRows)) {
+                void persistShared("lkpdProgress", gabung, lokalRef.current.role);
+              }
+            } else if (!Array.isArray(data.lkpdProgress) && !sedangDitulis("lkpdProgress") && lokalRef.current.progress.length) {
+              void persistShared("lkpdProgress", lokalRef.current.progress, lokalRef.current.role);
+            }
           }
         }
       } catch {
@@ -389,6 +450,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         );
         void persistShared("notifications", next, effective?.role);
         return next;
+      }),
+      bersihkanNotifikasi: () => setNotifications(() => {
+        // Kosongkan seluruh history (semua pengguna). Array kosong ikut ditulis ke
+        // server sehingga perangkat lain ikut bersih pada siklus GET berikutnya.
+        void persistShared("notifications", [], effective?.role);
+        return [];
       }),
       addCheatLog: (l) => setCheatLogs((p) => {
         const next = [{ ...l, id: uid("c"), timestamp: nowIso() }, ...p];

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { AppShell, Guard } from "@/components/shell";
-import { Badge, Empty, Progress } from "@/components/ui";
+import { Badge, Empty, Modal, Progress } from "@/components/ui";
 import { BlokRenderer } from "@/components/lkpd/blocks";
 import { useStore } from "@/lib/store";
 import { cariProgress, progresSubtopic } from "@/lib/lkpd";
@@ -140,23 +140,29 @@ export default function JourneyPage() {
           </div>
 
           {raya ? (
-            <div className="card card-pad text-center py-9">
-              <p className="text-[40px]">🎉</p>
-              <p className="text-[18px] font-bold mt-1">LKPD Complete!</p>
-              <p className="muted mt-1 max-w-[460px] mx-auto">
-                Kamu menuntaskan seluruh mission <b>{sub.judul}</b> — {p.total} mission selesai.
-              </p>
-              <div className="mx-auto mt-4 max-w-[420px] rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-                <p className="text-[12.5px] font-semibold text-amber-800 uppercase tracking-wide">Nilai pengerjaan</p>
-                <p className="text-[30px] font-bold text-ink mt-0.5">{prog?.nilai ?? p.persen}</p>
-                <p className="text-[13.5px] text-amber-900 mt-0.5">⏳ Nilai sedang menunggu untuk diverifikasi oleh guru</p>
+            /**
+             * Pop-up pasca-kerjakan (sama seperti latihan & evaluasi): intinya
+             * "hasil sedang menunggu diverifikasi oleh guru".
+             */
+            <Modal open={raya} onClose={() => setRaya(false)} title="🎉 LKPD selesai!">
+              <div className="text-center py-1">
+                <p className="text-[44px] leading-none">🎉</p>
+                <p className="text-[17px] font-bold mt-2">Seluruh mission tuntas</p>
+                <p className="muted mt-1 max-w-[460px] mx-auto">
+                  Kamu menuntaskan seluruh mission <b>{sub.judul}</b> — {p.total} mission selesai.
+                </p>
+                <div className="mx-auto mt-4 max-w-[420px] rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+                  <p className="text-[12.5px] font-semibold text-amber-800 uppercase tracking-wide">Nilai pengerjaan</p>
+                  <p className="text-[30px] font-bold text-ink mt-0.5">{prog?.nilai ?? p.persen}</p>
+                  <p className="text-[15px] font-semibold text-amber-900 mt-1">⏳ Hasil sedang menunggu diverifikasi oleh guru</p>
+                  <p className="text-[13px] text-amber-800 mt-1">Status: <b>Menunggu verifikasi</b> — nilai menjadi fiks setelah guru menyetujuinya.</p>
+                </div>
               </div>
-              <div className="flex justify-center gap-2 mt-4 flex-wrap">
-                <Link href="/nilai" className="btn-primary">Lihat nilai saya</Link>
-                <Link href={`/lkpd/${topik.id}`} className="btn-ghost">Pilih submateri lain</Link>
-                <Link href="/lkpd" className="btn-ghost">Kembali ke LKPD Hub</Link>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Link href="/nilai" className="btn-primary flex-1">Lihat nilai &amp; status</Link>
+                <Link href={`/lkpd/${topik.id}`} className="btn-ghost" onClick={() => setRaya(false)}>Pilih submateri lain</Link>
               </div>
-            </div>
+            </Modal>
           ) : m ? (
             <div>
               <div className="mb-3">

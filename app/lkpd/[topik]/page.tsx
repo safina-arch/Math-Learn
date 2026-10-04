@@ -6,6 +6,7 @@ import { useState } from "react";
 import { AppShell, Guard } from "@/components/shell";
 import { Badge, Empty, PageHeader, Progress } from "@/components/ui";
 import { SubtopikModal } from "@/components/lkpd/modals";
+import { barisHasil } from "@/components/lkpd/hasil";
 import { useStore } from "@/lib/store";
 import {
   LKPD_STATUS_LABEL,
@@ -20,10 +21,13 @@ import type { LkpdSubtopic } from "@/lib/types";
 export default function TopikPage() {
   const params = useParams<{ topik: string }>();
   const router = useRouter();
-  const { lkpdTopics, lkpdProgress, user, upsertLkpdTopic, addNotification, ready } = useStore();
+  const { lkpdTopics, lkpdProgress, users, user, upsertLkpdTopic, addNotification, ready } = useStore();
   const topik = lkpdTopics.find((t) => t.id === params.topik);
   const [modal, setModal] = useState<null | "baru" | LkpdSubtopic>(null);
   const manage = user?.role === "guru" || user?.role === "admin";
+  const jumlahSiswa = users.filter((u) => u.role === "siswa").length;
+  /** Penilaian LKPD per sub-bab: satu baris hasil per siswa × submateri. */
+  const rowsNilai = manage ? barisHasil(lkpdTopics, lkpdProgress, users) : [];
 
   if (!ready) return null;
 
@@ -79,7 +83,13 @@ export default function TopikPage() {
           ) : (
             <div className="space-y-3">
               {topik.subtopics.map((s, i) => {
-                const p = progresSubtopic(s, cariProgress(lkpdProgress, user?.id, s.id));
+                const pr = cariProgress(lkpdProgress, user?.id, s.id);
+                const p = progresSubtopic(s, pr);
+                // Rekap penilaian sub-bab ini (khusus tampilan guru/admin).
+                const subRows = rowsNilai.filter((r) => r.subtopicId === s.id);
+                const dinilai = subRows.filter((r) => r.nilai != null);
+                const rata = dinilai.length ? Math.round(dinilai.reduce((n, r) => n + (r.nilai || 0), 0) / dinilai.length) : null;
+                const menunggu = dinilai.filter((r) => !r.verifikasi).length;
                 return (
                   <div key={s.id} className="card card-pad hover:border-primary-200 transition-colors">
                     <div className="flex flex-wrap items-center gap-2">
@@ -96,6 +106,29 @@ export default function TopikPage() {
                         <span>{p.persen}%</span>
                       </div>
                       <Progress value={p.persen} />
+                    </div>
+
+                    {/* Penilaian per sub-bab — nilai muncul per submateri, bukan per materi. */}
+                    <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-line bg-wash/50 px-3 py-2">
+                      <span className="text-[12.5px] font-semibold uppercase tracking-wide text-ink-faint">Nilai sub-bab</span>
+                      {manage ? (
+                        <>
+                          <span className="text-[17px] font-bold">{rata ?? "—"}</span>
+                          <span className="text-[12.5px] text-ink-muted">
+                            {dinilai.length ? `rata-rata · ${dinilai.length} dari ${jumlahSiswa || dinilai.length} siswa dinilai` : "belum ada nilai"}
+                          </span>
+                          {menunggu ? <Badge tone="amber">{menunggu} menunggu verifikasi</Badge> : null}
+                        </>
+                      ) : (
+                        <>
+                          <span className="text-[17px] font-bold">{pr?.nilai ?? "—"}</span>
+                          {pr?.nilai != null ? (
+                            <Badge tone={pr.verifikasi ? "green" : "amber"}>{pr.verifikasi ? "Terverifikasi ✓" : "Menunggu verifikasi"}</Badge>
+                          ) : (
+                            <span className="text-[12.5px] text-ink-faint">nilai terisi saat seluruh mission selesai</span>
+                          )}
+                        </>
+                      )}
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2 mt-3.5">

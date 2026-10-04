@@ -75,7 +75,7 @@ export function MaterialModal({ open, initial, onClose, onSave }: { open: boolea
         <div><label className="label">Judul</label><input className="input" value={judul} onChange={(e) => setJudul(e.target.value)} placeholder="cth. Aljabar: Operasi Hitung" /></div>
         <div className="grid sm:grid-cols-2 gap-3">
           <div><label className="label">Kelas</label><select className="input" value={kelas} onChange={(e) => setKelas(e.target.value)}>{["VII-A", "VII-B", "VIII-A", "VIII-B", "IX-A", "IX-B"].map((k) => <option key={k}>{k}</option>)}</select></div>
-          <div><label className="label">URL video (embed YouTube, opsional)</label><input className="input" value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} placeholder="https://www.youtube.com/embed/…" /></div>
+          <div><label className="label">URL media (YouTube / Google Drive / tautan file, opsional)</label><input className="input" value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} placeholder="https://www.youtube.com/watch?v=… atau https://drive.google.com/…" /></div>
         </div>
         <div><label className="label">Ringkasan</label><input className="input" value={ringkasan} onChange={(e) => setRingkasan(e.target.value)} placeholder="Satu kalimat isi materi" /></div>
         <div><label className="label">Konten (mendukung ## judul, - list, `kode`)</label><textarea className="input min-h-[160px] font-mono !text-[13px]" value={konten} onChange={(e) => setKonten(e.target.value)} placeholder="## Tujuan&#10;- point…" /></div>

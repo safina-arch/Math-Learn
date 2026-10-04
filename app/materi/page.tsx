@@ -7,6 +7,7 @@ import { Badge, Empty, PageHeader } from "@/components/ui";
 import { MaterialModal } from "@/components/material-modal";
 import { useStore } from "@/lib/store";
 import type { Material } from "@/lib/types";
+import { labelMediaMateri } from "@/lib/utils";
 
 export default function MateriPage() {
   return (
@@ -48,7 +49,7 @@ function List() {
             >
               <div className="flex items-center gap-2 mb-1.5">
                 <Badge tone="purple">{m.kelas}</Badge>
-                {m.videoUrl ? <Badge>Video</Badge> : null}
+                {m.videoUrl ? <Badge>{labelMediaMateri(m.videoUrl, true)}</Badge> : null}
                 {(() => {
                   const atts = m.attachments || [];
                   const nFile = atts.filter((f) => f.tipe !== "link").length;

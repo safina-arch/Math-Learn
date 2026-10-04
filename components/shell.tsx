@@ -50,7 +50,7 @@ function I({ d }: { d: string }) {
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const { user, logout, notifications, markAllRead, stopImpersonate, impersonating } = useStore();
+  const { user, logout, notifications, markAllRead, bersihkanNotifikasi, stopImpersonate, impersonating } = useStore();
   const pathname = usePathname();
   const router = useRouter();
   const [mobileNav, setMobileNav] = useState(false);
@@ -90,9 +90,22 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </button>
               {bell ? (
                 <div className="absolute right-0 mt-2 w-[320px] max-w-[86vw] card shadow-pop overflow-hidden">
-                  <div className="px-4 py-3 border-b border-line flex items-center justify-between">
+                  <div className="px-4 py-3 border-b border-line flex items-center justify-between gap-2">
                     <p className="text-[13.5px] font-semibold">Notifikasi</p>
-                    <button className="text-[12.5px] text-primary font-medium" onClick={() => markAllRead(user.id)}>Tandai dibaca</button>
+                    <div className="flex items-center gap-3 shrink-0">
+                      <button className="text-[12.5px] text-primary font-medium" onClick={() => markAllRead(user.id)}>Tandai dibaca</button>
+                      {user.role === "guru" || user.role === "admin" ? (
+                        <button
+                          className="text-[12.5px] text-red-600 font-medium"
+                          onClick={() => {
+                            if (confirm("Bersihkan SELURUH history notifikasi (semua pengguna, dari awal sampai sekarang)?")) {
+                              bersihkanNotifikasi();
+                              setBell(false);
+                            }
+                          }}
+                        >🗑 Bersihkan</button>
+                      ) : null}
+                    </div>
                   </div>
                   <div className="max-h-[340px] overflow-auto divide-y divide-line">
                     {notifs.length === 0 ? <p className="muted p-4">Belum ada notifikasi.</p> : notifs.map((n) => (

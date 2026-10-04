@@ -148,6 +148,25 @@ export function domainLabel(url: string): string {
   }
 }
 
+/**
+ * Judul slot media pada halaman materi — menyesuaikan tipe file/tautan yang
+ * diunggah guru/admin (YouTube, Google Drive, video, PDF, gambar, berkas, tautan)
+ * sehingga tulisannya tidak selalu "Video pembelajaran".
+ * `pendek` = versi ringkas untuk badge daftar materi.
+ */
+export function labelMediaMateri(url?: string | null, pendek = false): string {
+  const u = (url || "").trim().toLowerCase();
+  if (!u) return pendek ? "Tautan" : "Tautan media";
+  if (/youtu\.be|youtube\.com/.test(u)) return pendek ? "YouTube" : "Video pembelajaran · YouTube";
+  if (isDriveUrl(u)) return pendek ? "Google Drive" : "Pratinjau Google Drive";
+  const path = u.split("?")[0];
+  if (/\.(mp4|webm|mov|m4v|mkv|avi)$/.test(path)) return pendek ? "Video" : "Video pembelajaran";
+  if (/\.pdf$/.test(path)) return pendek ? "PDF" : "Dokumen PDF";
+  if (/\.(png|jpe?g|webp|gif|avif)$/.test(path)) return pendek ? "Gambar" : "Gambar materi";
+  if (/\.(pptx?|docx?|xlsx?|csv|txt|zip|rar)$/.test(path)) return pendek ? "Berkas" : "Berkas materi";
+  return pendek ? "Tautan" : "Tautan media";
+}
+
 /** Status ketersediaan evaluasi: dikunci manual, belum waktunya, terbuka, atau sudah lewat. */
 export type JendelaEvaluasi = "kunci-manual" | "belum-buka" | "buka" | "lewat-waktu";
 export const JENDELA_META: Record<JendelaEvaluasi, { label: string; tone: "gray" | "amber" | "green" | "red" }> = {
