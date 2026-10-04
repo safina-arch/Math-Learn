@@ -5,6 +5,7 @@ import { Badge, Empty } from "@/components/ui";
 import { useStore } from "@/lib/store";
 import { cariProgress, nilaiSubtopic, progresSubtopic } from "@/lib/lkpd";
 import { fmtDateTime } from "@/lib/utils";
+import { CekKerjaLkpd, type KunciCek } from "./cek";
 
 export type BarisHasilLkpd = {
   key: string;
@@ -94,9 +95,10 @@ function barisKosong(
  * Alurnya persis seperti yang diminta: Nilai siswa → LKPD → Materi → Sub bab → Verifikasi.
  */
 export function HasilLkpdGuru({ aksi = true }: { aksi?: boolean }) {
-  const { lkpdTopics, lkpdProgress, users, user, verifikasiLkpd, verifikasiLkpdBatch, syncError } = useStore();
+  const { lkpdTopics, lkpdProgress, users, user, verifikasiLkpdBatch, syncError } = useStore();
   const [materiId, setMateriId] = useState("semua");
   const [subId, setSubId] = useState("semua");
+  const [cek, setCek] = useState<KunciCek | null>(null);
   const boleh = user?.role === "guru" || user?.role === "admin";
 
   // Langkah 2 & 3: penyaring bertingkat (materi → sub bab).
@@ -148,7 +150,8 @@ export function HasilLkpdGuru({ aksi = true }: { aksi?: boolean }) {
       </div>
       <p className="muted mb-3 max-w-[680px]">
         Nilai per sub-bab naik sejak mission pertama (tanpa menunggu seluruh materi selesai). Pilih <b>Materi → Sub bab</b>
-        untuk menilai per sub-bab, lalu verifikasi agar nilai fiks di siswa.
+        untuk menilai per sub-bab, lalu klik <b>👁 Periksa</b> pada baris siswa untuk membuka isi kerjanya — verifikasi
+        dilakukan setelah pekerjaan dicek, bukan sekali klik dari tabel.
       </p>
 
       {boleh && syncError ? (
@@ -276,23 +279,12 @@ export function HasilLkpdGuru({ aksi = true }: { aksi?: boolean }) {
                       <td className="px-4 py-2.5 text-ink-muted">{fmtDateTime(r.updatedAt)}</td>
                       {aksi && boleh ? (
                         <td className="px-4 py-2.5 text-right">
-                          {r.nilai == null ? (
-                            <span className="text-[12.5px] text-ink-faint">—</span>
-                          ) : r.verifikasi ? (
-                            <button
-                              className="btn-ghost !py-1.5 !text-[12.5px]"
-                              onClick={() => verifikasiLkpd(r.siswaId, r.subtopicId, false)}
-                            >
-                              Batalkan
-                            </button>
-                          ) : (
-                            <button
-                              className="btn-primary !py-1.5 !text-[12.5px]"
-                              onClick={() => verifikasiLkpd(r.siswaId, r.subtopicId, true)}
-                            >
-                              Verifikasi
-                            </button>
-                          )}
+                          <button
+                            className="btn-ghost !py-1.5 !text-[12.5px]"
+                            onClick={() => setCek({ siswaId: r.siswaId, subtopicId: r.subtopicId, topikId: r.topikId })}
+                          >
+                            👁 Periksa
+                          </button>
                         </td>
                       ) : null}
                     </tr>
@@ -303,6 +295,9 @@ export function HasilLkpdGuru({ aksi = true }: { aksi?: boolean }) {
           </div>
         </div>
       )}
+
+      {/* Modal cek isi kerja siswa — verifikasi/batalkan dari dalam panel ini */}
+      <CekKerjaLkpd kunci={cek} onClose={() => setCek(null)} />
     </section>
   );
 }
