@@ -13,6 +13,7 @@ import {
   LKPD_STATUS_TONE,
   cariProgress,
   ctaProgres,
+  nilaiSubtopic,
   progresSubtopic,
 } from "@/lib/lkpd";
 import type { LkpdSubtopic } from "@/lib/types";
@@ -85,6 +86,8 @@ export default function TopikPage() {
               {topik.subtopics.map((s, i) => {
                 const pr = cariProgress(lkpdProgress, user?.id, s.id);
                 const p = progresSubtopic(s, pr);
+                /** Nilai sub-bab siswa: muncul sejak mission pertama (tanpa menunggu materi penuh). */
+                const nilaiSendiri = nilaiSubtopic(s, pr);
                 // Rekap penilaian sub-bab ini (khusus tampilan guru/admin).
                 const subRows = rowsNilai.filter((r) => r.subtopicId === s.id);
                 const dinilai = subRows.filter((r) => r.nilai != null);
@@ -121,11 +124,11 @@ export default function TopikPage() {
                         </>
                       ) : (
                         <>
-                          <span className="text-[17px] font-bold">{pr?.nilai ?? "—"}</span>
-                          {pr?.nilai != null ? (
-                            <Badge tone={pr.verifikasi ? "green" : "amber"}>{pr.verifikasi ? "Terverifikasi ✓" : "Menunggu verifikasi"}</Badge>
+                          <span className="text-[17px] font-bold">{nilaiSendiri ?? "—"}</span>
+                          {nilaiSendiri != null ? (
+                            <Badge tone={pr?.verifikasi ? "green" : "amber"}>{pr?.verifikasi ? "Terverifikasi ✓" : "Menunggu verifikasi"}</Badge>
                           ) : (
-                            <span className="text-[12.5px] text-ink-faint">nilai terisi saat seluruh mission selesai</span>
+                            <span className="text-[12.5px] text-ink-faint">nilai terisi sejak mission pertama selesai</span>
                           )}
                         </>
                       )}

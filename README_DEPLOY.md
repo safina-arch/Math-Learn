@@ -14,7 +14,7 @@ Tanpa `.env`, aplikasi memakai data lokal (localStorage) + AI heuristik.
 ## 2. Supabase untuk produksi
 1. Buat project di supabase.com → salin **Project URL** + **anon key** (+ **service_role** opsional).
 2. Buka SQL Editor → jalankan `supabase/schema.sql`.
-3. Jalankan juga `supabase/migration-revisi.sql` (key `users`/`presence` di `app_state`, tabel kehadiran, bucket `materi` public).
+3. Jalankan juga `supabase/migration-revisi.sql` (key `users`/`presence` di `app_state`, tabel kehadiran, bucket `materi` public). Proyek lama jalankan `supabase/migration-lkpd.sql` agar key `lkpdTopics`/`lkpdProgress` ikut diizinkan (opsional — server juga menyimpan dua key LKPD di dalam key `presence`, lihat `app/api/sync/route.ts`).
 4. Buat 3 user di Authentication, lalu insert ke `profiles` dengan id yang sama:
 ```sql
 insert into profiles (id, nama, email, role, kelas) values

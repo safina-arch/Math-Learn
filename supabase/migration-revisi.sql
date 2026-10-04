@@ -15,7 +15,7 @@ end $$;
 
 alter table app_state
   add constraint app_state_key_check
-  check (key in ('materials','assignments','submissions','announcements','notifications','cheatLogs','events','users','presence'));
+  check (key in ('materials','assignments','submissions','announcements','notifications','cheatLogs','events','users','presence','lkpdTopics','lkpdProgress'));
 
 -- 2) Kehadiran user (untuk daftar "pengguna aktif sekarang" di halaman admin)
 create table if not exists presence (

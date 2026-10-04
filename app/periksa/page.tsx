@@ -4,7 +4,7 @@ import { Fragment, useState } from "react";
 import { AppShell, Guard } from "@/components/shell";
 import { ExportMenu } from "@/components/export-menu";
 import { Badge, Empty, Modal, PageHeader, Stat } from "@/components/ui";
-import { HasilLkpdGuru } from "@/components/lkpd/hasil";
+import { HasilLkpdGuru, barisHasil } from "@/components/lkpd/hasil";
 import { useStore } from "@/lib/store";
 import { fmtDateTime, STATUS_TUGAS_META, statusRingkasan, statusTugas, TIPE_LABEL, TIPE_TONE, TIPEURUT } from "@/lib/utils";
 import type { AssignmentType } from "@/lib/types";
@@ -23,7 +23,7 @@ export default function PeriksaPage() {
 }
 
 function Content() {
-  const { submissions, assignments, users, updateSubmission, addNotification } = useStore();
+  const { submissions, assignments, users, updateSubmission, addNotification, lkpdTopics, lkpdProgress } = useStore();
   const [openId, setOpenId] = useState<string | null>(null);
   const [nilai, setNilai] = useState("");
   const [catatan, setCatatan] = useState("");
@@ -76,9 +76,13 @@ function Content() {
   // Hitungan chip memakai kiriman yang masih punya tugas agar cocok dengan tabel.
   const berelasi = submissions.filter((s) => assignments.some((a) => a.id === s.assignmentId));
   const hitungTipe = (t: AssignmentType) => berelasi.filter((s) => tipeOf(s.assignmentId) === t).length;
+  /** Chip LKPD ikut menghitung penilaian journey LKPD (per sub-bab), bukan hanya kiriman tugas lama. */
+  const lkpdJourney = barisHasil(lkpdTopics, lkpdProgress, users).length;
   const chips: { key: FilterTipe; label: string }[] = [
-    { key: "semua", label: `Semua (${berelasi.length})` },
-    ...(["latihan", "lkpd", "evaluasi"] as AssignmentType[]).map((t) => ({ key: t, label: `${TIPE_LABEL[t]} (${hitungTipe(t)})` })),
+    { key: "semua", label: `Semua (${berelasi.length + lkpdJourney})` },
+    { key: "latihan", label: `${TIPE_LABEL.latihan} (${hitungTipe("latihan")})` },
+    { key: "lkpd", label: `${TIPE_LABEL.lkpd} (${hitungTipe("lkpd") + lkpdJourney})` },
+    { key: "evaluasi", label: `${TIPE_LABEL.evaluasi} (${hitungTipe("evaluasi")})` },
   ];
 
   function open(sid: string) {
@@ -128,7 +132,9 @@ function Content() {
           Urut: per jenis tugas → alfabet nama siswa {sort ? <button className="text-primary font-medium" onClick={() => setSort(null)}>reset</button> : null}
         </span>
       </div>
-      {submissions.length === 0 ? <Empty title="Belum ada kiriman" desc="Kiriman siswa dari LKPD, latihan, dan evaluasi akan muncul di sini." /> : urutKiriman.length === 0 ? (
+      {/* Papan langkah penilaian LKPD (Nilai siswa → LKPD → Materi → Sub bab → Verifikasi). */}
+      {filter === "lkpd" ? <HasilLkpdGuru /> : null}
+      {filter === "lkpd" && hitungTipe("lkpd") === 0 ? null : submissions.length === 0 ? <Empty title="Belum ada kiriman" desc="Kiriman siswa dari LKPD, latihan, dan evaluasi akan muncul di sini." /> : urutKiriman.length === 0 ? (
         <Empty title="Tidak ada kiriman pada jenis ini" desc="Pilih jenis tugas lain pada filter di atas." />
       ) : (
         <div className="card overflow-hidden">
@@ -178,7 +184,7 @@ function Content() {
       )}
 
       {/* Nilai hasil pengerjaan LKPD (learning journey) siswa — menunggu & sudah diverifikasi. */}
-      <HasilLkpdGuru />
+      {filter === "lkpd" ? null : <HasilLkpdGuru />}
 
       {/* Laporan kecurangan dipindah ke halaman sendiri: menu "Laporan kecurangan" pada sidebar. */}
 

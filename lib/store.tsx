@@ -67,6 +67,10 @@ interface Store {
   simpanJawabanLkpd: (subtopicId: string, blockId: string, teks: string) => void;
   /** Guru/admin menetapkan nilai LKPD: set/clear verifikasi (nilai dihitung dari penyelesaian mission). */
   verifikasiLkpd: (siswaId: string, subtopicId: string, verifikasi: boolean) => void;
+  /** Verifikasi massal (daftar siswa × sub-bab) — satu tulisan progres + satu notifikasi gabungan. */
+  verifikasiLkpdBatch: (daftar: { siswaId: string; subtopicId: string }[], verifikasi: boolean) => void;
+  /** Galat sinkronisasi terakhir (mis. HTTP 500) — ditampilkan guru/admin agar kegagalan tidak diam-diam. */
+  syncError: string | null;
   resetDemo: () => void;
 }
 
@@ -112,6 +116,9 @@ function sedangDitulis(resource: string): boolean {
  */
 const antreanTulis: Record<string, { data: unknown[]; role?: string }> = {};
 
+/** Lapor galat sinkronisasi terakhir ke provider (agar gagal POST tidak diam-diam). */
+let laporSync: ((pesan: string | null) => void) | null = null;
+
 async function persistShared(resource: string, data: unknown[], role?: string) {
   pendingUntil[resource] = Date.now() + 5000;
   const kirim = () =>
@@ -135,11 +142,14 @@ async function persistShared(resource: string, data: unknown[], role?: string) {
       // Hapus dari antrean hanya bila yang baru saja sukses adalah payload yang
       // sama — tulisan lebih baru (antrean berbeda) tetap dipertahankan.
       if (antreanTulis[resource]?.data === data) delete antreanTulis[resource];
+      laporSync?.(null);
     } else if (!res || res.status >= 500) {
       antreanTulis[resource] = { data, role };
+      laporSync?.(`${resource}: ${res ? `HTTP ${res.status}` : "jaringan gagal"}`);
     }
   } catch {
     antreanTulis[resource] = { data, role };
+    laporSync?.(`${resource}: gagal terhubung ke server`);
   }
 }
 
@@ -178,6 +188,16 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [lkpdTopics, setLkpdTopics] = useState<LkpdTopic[]>(SEED_LKPD_TOPICS);
   const [lkpdProgress, setLkpdProgress] = useState<LkpdProgress[]>([]);
   const [ready, setReady] = useState(false);
+  /** Galat sinkronisasi terakhir (HTTP 500 / jaringan) — ditampilkan ke guru/admin. */
+  const [syncError, setSyncError] = useState<string | null>(null);
+
+  // Pasang pelapor galat sinkronisasi (module-level) selama provider hidup.
+  useEffect(() => {
+    laporSync = (pesan) => setSyncError(pesan);
+    return () => {
+      laporSync = null;
+    };
+  }, []);
 
   /**
    * Snapshot data lokal terkini (progres/katalog LKPD + peran) untuk efek sinkron —
@@ -353,6 +373,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       events,
       lkpdTopics,
       lkpdProgress,
+      syncError,
       login: (username, password) => {
         const found = accounts.find((u) => u.email.toLowerCase() === username.toLowerCase().trim());
         if (found && found.password === password) {
@@ -509,11 +530,16 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           if (base.missions.includes(missionId)) return p;
           const missions = [...base.missions, missionId];
           const updated: LkpdProgress = { ...base, missions, updatedAt: nowIso() };
-          // Selesai seluruh mission → nilai pengerjaan LKPD terisi (0–100) & menunggu verifikasi guru.
+          // Nilai sub-bab dihitung SEJAK mission pertama (tanpa menunggu seluruh materi selesai):
+          // persentase mission selesai → 0–100. Bila nilainya berubah, verifikasi guru ikut di-reset.
           const sub = lkpdTopics.flatMap((t) => t.subtopics).find((s) => s.id === subtopicId);
-          if (sub && sub.missions.length > 0 && sub.missions.every((m) => missions.includes(m.id)) && updated.nilai == null) {
-            updated.nilai = Math.round((missions.filter((id) => sub.missions.some((m) => m.id === id)).length / sub.missions.length) * 100);
-            updated.verifikasi = false;
+          if (sub && sub.missions.length > 0) {
+            const selesai = missions.filter((id) => sub.missions.some((m) => m.id === id)).length;
+            const baru = Math.round((selesai / sub.missions.length) * 100);
+            if (baru !== (base.nilai ?? -1)) {
+              updated.nilai = baru;
+              updated.verifikasi = false;
+            }
           }
           const next = idx >= 0 ? p.map((x, i) => (i === idx ? updated : x)) : [updated, ...p];
           void persistShared("lkpdProgress", next, effective?.role);
@@ -567,6 +593,41 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           });
         }
       },
+      verifikasiLkpdBatch: (daftar, verifikasi) => {
+        const role = effective?.role;
+        if ((role !== "guru" && role !== "admin") || daftar.length === 0) return;
+        const kunci = new Set(daftar.map((d) => `${d.siswaId}:${d.subtopicId}`));
+        // Satu tulisan progres untuk seluruh daftar (bukan N tulisan).
+        setLkpdProgress((p) => {
+          const next = p.map((x) =>
+            kunci.has(`${x.siswaId}:${x.subtopicId}`) && x.nilai != null
+              ? { ...x, verifikasi, updatedAt: nowIso() }
+              : x,
+          );
+          void persistShared("lkpdProgress", next, role);
+          return next;
+        });
+        if (!verifikasi) return;
+        // Notifikasi ke tiap siswa yang terverifikasi — digabung jadi satu tulisan.
+        const judul = new Map(lkpdTopics.flatMap((t) => t.subtopics).map((s) => [s.id, s.judul]));
+        const nilai = new Map(lkpdProgress.map((x) => [`${x.siswaId}:${x.subtopicId}`, x.nilai]));
+        const berkas = daftar.filter((d) => nilai.has(`${d.siswaId}:${d.subtopicId}`));
+        if (!berkas.length) return;
+        setNotifications((p) => {
+          const baru = berkas.map((d) => ({
+            id: uid("n"),
+            userId: d.siswaId,
+            kategori: "nilai",
+            judul: "Nilai LKPD telah diverifikasi",
+            isi: `${judul.get(d.subtopicId) || "LKPD"}: nilai ${nilai.get(`${d.siswaId}:${d.subtopicId}`) ?? "—"} — sudah fiks. Lihat pada menu Nilai.`,
+            dibaca: false,
+            createdAt: nowIso(),
+          }));
+          const next = [...baru, ...p].slice(0, 400);
+          void persistShared("notifications", next, role);
+          return next;
+        });
+      },
       resetDemo: () => {
         setMaterials(SEED_MATERIALS);
         setAssignments(SEED_ASSIGNMENTS);
@@ -578,7 +639,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         setLkpdProgress([]);
       },
     };
-  }, [ready, user, impersonating, accounts, presence, materials, assignments, submissions, announcements, notifications, cheatLogs, events, lkpdTopics, lkpdProgress]);
+  }, [ready, user, impersonating, accounts, presence, materials, assignments, submissions, announcements, notifications, cheatLogs, events, lkpdTopics, lkpdProgress, syncError]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

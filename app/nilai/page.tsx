@@ -24,6 +24,7 @@ export default function NilaiPage() {
 }
 
 function AdminGrades({ submissions, assignments, users }: { submissions: ReturnType<typeof useStore>["submissions"]; assignments: ReturnType<typeof useStore>["assignments"]; users: ReturnType<typeof useStore>["users"] }) {
+  const { lkpdTopics, lkpdProgress } = useStore();
   const [filter, setFilter] = useState<FilterTipe>("semua");
   /** Sorting kolom — kelompok jenis tugas (latihan/LKPD/evaluasi) selalu dijaga utuh. */
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 } | null>(null);
@@ -68,9 +69,13 @@ function AdminGrades({ submissions, assignments, users }: { submissions: ReturnT
   // Hitungan chip memakai kiriman yang masih punya tugas agar cocok dengan tabel.
   const berelasi = submissions.filter((s) => assignments.some((a) => a.id === s.assignmentId));
   const hitung = (t: AssignmentType) => berelasi.filter((s) => tipeOf(s.assignmentId) === t).length;
+  /** Chip LKPD memakai jumlah penilaian journey LKPD (per sub-bab) juga — bukan hanya kiriman tugas lama. */
+  const lkpdJourney = barisHasil(lkpdTopics, lkpdProgress, users).length;
   const chips: { key: FilterTipe; label: string }[] = [
-    { key: "semua", label: `Semua (${berelasi.length})` },
-    ...(["latihan", "lkpd", "evaluasi"] as AssignmentType[]).map((t) => ({ key: t, label: `${TIPE_LABEL[t]} (${hitung(t)})` })),
+    { key: "semua", label: `Semua (${berelasi.length + lkpdJourney})` },
+    { key: "latihan", label: `${TIPE_LABEL.latihan} (${hitung("latihan")})` },
+    { key: "lkpd", label: `${TIPE_LABEL.lkpd} (${hitung("lkpd") + lkpdJourney})` },
+    { key: "evaluasi", label: `${TIPE_LABEL.evaluasi} (${hitung("evaluasi")})` },
   ];
 
   return (
@@ -88,7 +93,12 @@ function AdminGrades({ submissions, assignments, users }: { submissions: ReturnT
           Urut: per jenis tugas → alfabet nama siswa {sort ? <button className="text-primary font-medium" onClick={() => setSort(null)}>reset</button> : null}
         </span>
       </div>
-      {berelasi.length === 0 ? <Empty title="Belum ada nilai siswa" desc="Nilai akan muncul setelah siswa mengumpulkan tugas atau evaluasi." /> : rows.length === 0 ? (
+      {/* Nilai hasil pengerjaan LKPD (learning journey) — verifikasi guru/admin.
+          Pada chip LKPD, papan langkah Materi → Sub bab → Verifikasi ditampilkan di atas. */}
+      {filter === "lkpd" ? <HasilLkpdGuru /> : null}
+      {filter === "lkpd" && hitung("lkpd") === 0 ? null : berelasi.length === 0 ? (
+        <Empty title="Belum ada nilai siswa" desc="Nilai akan muncul setelah siswa mengumpulkan tugas atau evaluasi." />
+      ) : rows.length === 0 ? (
         <Empty title="Tidak ada nilai pada jenis ini" desc="Pilih jenis tugas lain pada filter di atas." />
       ) : (
         <div className="card overflow-hidden">
@@ -131,14 +141,15 @@ function AdminGrades({ submissions, assignments, users }: { submissions: ReturnT
       )}
 
       {/* Nilai hasil pengerjaan LKPD (learning journey) — verifikasi guru/admin. */}
-      <HasilLkpdGuru />
+      {filter === "lkpd" ? null : <HasilLkpdGuru />}
     </div>
   );
 }
 
 function Content() {
   const { user, submissions, assignments, users, lkpdTopics, lkpdProgress } = useStore();
-  if (user?.role === "admin") return <AdminGrades submissions={submissions} assignments={assignments} users={users} />;
+  // Guru & admin sama-sama membuka panel "Nilai siswa" (bukan tampilan siswa).
+  if (user?.role === "admin" || user?.role === "guru") return <AdminGrades submissions={submissions} assignments={assignments} users={users} />;
 
   // Siswa: kiriman miliknya — status membedakan mana yang masih menunggu & mana yang sudah fiks.
   const mine = submissions.filter((s) => s.siswaId === user?.id && assignments.some((a) => a.id === s.assignmentId)).sort((a, b) => b.submittedAt.localeCompare(a.submittedAt));

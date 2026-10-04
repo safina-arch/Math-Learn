@@ -42,6 +42,18 @@ export function progresSubtopic(sub: LkpdSubtopic | undefined, p: LkpdProgress |
   return { selesai, total, persen, status };
 }
 
+/**
+ * Nilai per sub-bab — TIDAK menunggu seluruh materi selesai:
+ * nilai tersimpan (`p.nilai`, ikut naik tiap mission ditandai) dan bila belum tersimpan
+ * (data lama) dipakai persentase penyelesaian. `null` = belum ada mission dikerjakan.
+ */
+export function nilaiSubtopic(sub: LkpdSubtopic | undefined, p: LkpdProgress | null): number | null {
+  if (!p) return null;
+  const r = progresSubtopic(sub, p);
+  if (r.selesai === 0) return p.nilai ?? null;
+  return p.nilai ?? r.persen;
+}
+
 /** Progres satu topik = rata-rata progres seluruh submaterinya. */
 export function progresTopik(topik: LkpdTopic, list: LkpdProgress[], siswaId: string | undefined): RingkasProgres {
   const subs = topik.subtopics;
