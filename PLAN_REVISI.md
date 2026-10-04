@@ -1,9 +1,21 @@
 # Plan Revisi Math-Learn — Status Eksekusi
 
-Tanggal: 23 Sep – 4 Okt 2026 · Proyek: `mathlearn/` (Next.js 14 + Supabase + localStorage fallback)
-**Status: Gelombang 1–9 SELESAI · Sistem LKPD scalable (Learning Journey) LIVE · Gelombang 9 (nilai LKPD) LIVE**
+Tanggal: 23 Sep – 5 Okt 2026 · Proyek: `mathlearn/` (Next.js 14 + Supabase + localStorage fallback)
+**Status: Gelombang 1–10 SELESAI · Sistem LKPD scalable (Learning Journey) LIVE · Gelombang 9 (nilai LKPD) & Gelombang 10 (cek kerja siswa) LIVE**
 
 Legenda: ✅ selesai & terverifikasi · ⏳ menunggu kredensial (Supabase & Vercel token)
+
+---
+
+## Gelombang 10 — Cek isi kerja siswa LKPD sebelum verifikasi (5 Okt 2026) ✅ build lulus (27 route) · LIVE
+
+| # | Revisi | Implementasi |
+|---|---|---|
+| 1 | Guru & admin bisa **cek hasil pekerjaan siswa** seperti pada latihan soal & evaluasi — **tidak langsung verifikasi** | Tombol aksi tiap baris di tabel penilaian diganti **👁 Periksa** (tombol Verifikasi/Batalkan langsung di baris dihapus) → membuka modal baru `components/lkpd/cek.tsx` (`CekKerjaLkpd`) yang menampilkan **isi kerja per mission**: badge *Selesai ✓ / Belum dikerjakan*, blok **refleksi** (teks jawaban siswa atau "Belum dijawab"), blok **pertanyaan** (semua opsi; pilihan siswa ditandai *benar ✓* / *belum tepat ✗*, opsi kunci ditandai, umpan balik untuk siswa ditampilkan bila salah), blok **aktivitas** (seret-slot → kartu yang dipindahkan beserta hasilnya + sisa; cocokkan → pasangan tersimpan ✓ + yang belum; isi-tabel → seluruh isi sel dengan penilaian hijau/merah + catatan apakah siswa sudah menekan "Periksa jawaban"), blok materi ringkas (teks bisa dibuka, media ditandai). Ringkasan atas: materi › sub bab, kelas, nilai, x/y mission & persen, status verifikasi, waktu terakhir dikerjakan. Panel bawah: **✓ Verifikasi nilai** / **Batalkan verifikasi** / Tutup → verifikasi kini terjadi **setelah pekerjaan dibuka**. Data diambil ulang dari store lewat `KunciCek` (bukan salinan baris) sehingga status/nilai selalu terkini setelah verifikasi |
+
+Catatan: langkah **④ Verifikasi semua** (batch, permintaan Gelombang 9) tetap tersedia di papan langkah; verifikasi per baris hanya lewat modal cek. Tombol "Belum mulai" (tanpa nilai) tetap bisa dibuka untuk memastikan siswa memang belum mengerjakan.
+
+Verifikasi: `npm.cmd run build` ✅ (lint + type, 27 route) → push `2bc7310` → Vercel deploy `dpl_4dpWLJ…` **READY** → string chunk produksi `/_next/static/chunks/190-25ab1f0f6253aa95.js`: `Cek kerja LKPD` ✓, `pilihan siswa` ✓, `Belum dipindahkan` ✓, `Belum terpasang` ✓, `Siswa belum menekan` ✓, `Belum ada sel yang diisi` ✓, `Umpan balik untuk siswa` ✓, `Verifikasi nilai` ✓, `keputusanmu` ✓, `Siswa belum mengerjakan sub bab ini` ✓, `bukan sekali klik dari tabel` ✓.
 
 ---
 
