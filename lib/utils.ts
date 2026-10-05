@@ -31,11 +31,28 @@ export function normalize(s: string): string {
   return (s || "").trim().toLowerCase().replace(/\s+/g, " ");
 }
 
+/**
+ * Pilihan ganda dinilai otomatis — TETAPI hanya bila kunci dan jawaban sama-sama
+ * terisi. Tanpa guard ini, `pgCorrect("", "")` bernilai true sehingga soal tanpa
+ * kunci / jawaban kosong ikut dianggap benar.
+ */
 export function pgCorrect(answer: string, kunci: string | undefined): boolean {
-  return normalize(answer) === normalize(kunci || "");
+  const a = normalize(answer);
+  const k = normalize(kunci || "");
+  if (!a || !k) return false;
+  return a === k;
 }
 
-/** Fallback AI heuristic: nilai 0-100 per soal + feedback 1-2 kalimat. */
+/**
+ * Fallback penilaian otomatis untuk jawaban terbuka (uraian/essay).
+ * HASILNYA selalu berupa DRAF saran untuk guru — bukan nilai akhir.
+ * Aturan ketat agar jawaban salah tidak dianggap benar:
+ *  - tanpa kunci/rubrik → skor 0 (tidak ada acuan → serahkan ke guru);
+ *  - tanpa jawaban → skor 0;
+ *  - perbandingan eksak → 100;
+ *  - selain itu skor mengikuti rasio kata kunci yang benar-benar ditemukan
+ *    (tanpa skor minimum buatan dan tanpa mengabaikan angka/simbol satu karakter).
+ */
 export function heuristicGrade(
   teks: string,
   jawaban: string,
@@ -46,22 +63,32 @@ export function heuristicGrade(
   const a = normalize(jawaban);
   const k = normalize(kunci || "");
   if (!a) return { skor: 0, feedback: "Jawaban masih kosong. Coba tulis langkah pengerjaanmu walau belum yakin." };
+  if (!k && !(rubrik || "").trim()) {
+    // Tidak ada kunci maupun rubrik → sistem tidak boleh menghakimi sendiri.
+    return { skor: 0, feedback: "Butuh pemeriksaan guru — belum ada kunci/rubrik untuk menilai otomatis." };
+  }
   if (k && a === k) return { skor: 100, feedback: "Tepat dan sesuai kunci. Pertahankan cara pengerjaanmu yang rapi." };
-  const keyTokens = new Set(k.split(/[^a-z0-9]+/).filter((t) => t.length > 1));
-  const ansTokens = new Set(a.split(/[^a-z0-9]+/).filter((t) => t.length > 1));
+  if (!k) {
+    // Hanya rubrik tersedia: cakupan jawaban (panjang & relevansi kata) → skor moderat, bukan "benar".
+    const skor = Math.min(60, Math.round(Math.min(1, a.length / 120) * 60));
+    return { skor, feedback: "Jawaban sudah tertulis — penilaian akhir menunggu guru memeriksa sesuai rubrik." };
+  }
+  // Tokenisasi mempertahankan angka satu karakter (mis. "4") supaya jawaban
+  // berbeda angka tidak dianggap sama persis dengan kunci.
+  const keyTokens = k.split(/[^a-z0-9]+/).filter(Boolean);
+  const ansTokens = new Set(a.split(/[^a-z0-9]+/).filter(Boolean));
   let hit = 0;
   keyTokens.forEach((t) => {
     if (ansTokens.has(t)) hit += 1;
   });
-  const recall = keyTokens.size ? hit / keyTokens.size : 0;
-  const lengthBonus = Math.min(1, a.length / 60) * 0.15;
-  const raw = Math.round(Math.min(95, recall * 90 + lengthBonus * 100));
-  const skor = Math.max(10, raw);
+  const recall = keyTokens.length ? hit / keyTokens.length : 0;
+  // Tanpa skor minimum: jawaban yang hampir tak cocok tetap mendapat skor kecil.
+  const skor = Math.max(0, Math.min(95, Math.round(recall * 90)));
   const fb =
     skor >= 75
-      ? "Sudah mendekati kunci. Periksa kembali hitungan akhirmu agar sempurna."
+      ? "Sebagian besar kata kunci cocok. Periksa kembali istilah yang belum muncul."
       : skor >= 45
-        ? "Ada bagian yang benar. Lengkapi langkah dan samakan dengan rubrik yang diminta."
+        ? "Ada bagian yang benar. Lengkapi langkah dan samakan dengan kunci/rubrik yang diminta."
         : `Belum sesuai ${rubrik ? "rubrik" : "kunci"}. Tulis ulang langkah dari awal dan periksa tiap operasi.`;
   void teks;
   void bobot;
@@ -95,16 +122,22 @@ export function cheatTone(tipe: string): "red" | "blue" {
   return tipe === "foto" ? "blue" : "red";
 }
 
-/** Status tugas siswa dari kacamata guru & admin. */
+/**
+ * Status tugas dari kacamata guru/admin — berbasis APAKA GURU SUDAH MEMERIKSA,
+ * bukan sekadar ada nilai. Kiriman yang nilainya masih draf AI (belum diterbitkan
+ * guru) tetap "Belum diperiksa".
+ */
 export type StatusTugas = "belum" | "belum-diperiksa" | "sudah";
 export const STATUS_TUGAS_META: Record<StatusTugas, { label: string; tone: "gray" | "amber" | "green" }> = {
   belum: { label: "Belum mengerjakan", tone: "gray" },
   "belum-diperiksa": { label: "Belum diperiksa", tone: "amber" },
   sudah: { label: "Sudah diperiksa", tone: "green" },
 };
-export function statusTugas(sub?: { status: string } | null): StatusTugas {
+export function statusTugas(sub?: { status: string; feedbackAi?: Record<string, { draft: boolean }> } | null): StatusTugas {
   if (!sub) return "belum";
-  return sub.status === "dinilai" ? "sudah" : "belum-diperiksa";
+  if (sub.status !== "dinilai") return "belum-diperiksa";
+  const drafTersisa = Object.values(sub.feedbackAi || {}).some((f) => f && f.draft);
+  return drafTersisa ? "belum-diperiksa" : "sudah";
 }
 
 /**
@@ -198,7 +231,8 @@ export function statusRingkasan(assignments: Assignment[], submissions: Submissi
     const roster = users.filter((u) => u.role === "siswa" && u.kelas === a.kelas);
     belum += Math.max(0, Math.max(roster.length, ids.size) - ids.size);
     for (const s of subs) {
-      if (s.status === "dinilai") sudah += 1;
+      // Konsisten dengan tampilan siswa: draf AI yang belum diterbitkan = belum diperiksa.
+      if (statusTugas(s) === "sudah") sudah += 1;
       else blm += 1;
     }
   }

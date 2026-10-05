@@ -1,16 +1,58 @@
 "use client";
 
-import { Fragment, useState } from "react";
+import { Fragment, useRef, useState } from "react";
 import { AppShell, Guard } from "@/components/shell";
 import { ExportMenu } from "@/components/export-menu";
 import { Badge, Empty, Modal, PageHeader, Stat } from "@/components/ui";
 import { HasilLkpdGuru, barisHasil } from "@/components/lkpd/hasil";
 import { useStore } from "@/lib/store";
 import { fmtDateTime, STATUS_TUGAS_META, statusRingkasan, statusTugas, TIPE_LABEL, TIPE_TONE, TIPEURUT } from "@/lib/utils";
-import type { AssignmentType } from "@/lib/types";
+import type { AssignmentType, MaterialAttachment } from "@/lib/types";
 
 type FilterTipe = "semua" | AssignmentType;
 type SortKey = "siswa" | "tugas" | "nilai" | "waktu";
+
+/**
+ * Rotasi foto DITENKAN ke dalam file (bukan sekadar CSS) — hasilnya semua yang
+ * membuka foto (siswa, guru, admin, perangkat lain) melihat orientasi yang sama.
+ * Elemen browser memakai orientasi EXIF asli, sehingga putaran sesuai tampilan.
+ * `null` = gagal (mis. CORS) → pemanggil mempertahankan rotasi tampilan.
+ */
+async function bakeRotation(file: MaterialAttachment, deg: number): Promise<MaterialAttachment | null> {
+  try {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    const loaded = await new Promise<boolean>((res) => {
+      img.onload = () => res(true);
+      img.onerror = () => res(false);
+      img.src = file.url;
+    });
+    if (!loaded || !img.naturalWidth || !img.naturalHeight) return null;
+    const w = img.naturalWidth;
+    const h = img.naturalHeight;
+    const putar = ((deg % 360) + 360) % 360;
+    const tukarSisi = putar === 90 || putar === 270;
+    const canvas = document.createElement("canvas");
+    canvas.width = tukarSisi ? h : w;
+    canvas.height = tukarSisi ? w : h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+    ctx.translate(canvas.width / 2, canvas.height / 2);
+    ctx.rotate((putar * Math.PI) / 180);
+    ctx.drawImage(img, -w / 2, -h / 2);
+    const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, "image/jpeg", 0.92));
+    if (!blob) return null;
+    const form = new FormData();
+    const nama = (file.name || "foto-jawaban").replace(/\.[a-z0-9]+$/i, "") + "-rotasi.jpg";
+    form.append("file", new File([blob], nama, { type: "image/jpeg" }));
+    const r = await fetch("/api/upload", { method: "POST", body: form });
+    const j = (await r.json()) as { url?: string; name?: string; size?: number; error?: string };
+    if (!r.ok || !j.url) return null;
+    return { ...file, url: j.url, name: j.name || file.name, size: j.size ?? file.size };
+  } catch {
+    return null;
+  }
+}
 
 export default function PeriksaPage() {
   return (
@@ -29,6 +71,11 @@ function Content() {
   const [catatan, setCatatan] = useState("");
   const [aiEdits, setAiEdits] = useState<Record<string, { skor: number; feedback: string }>>({});
   const [filter, setFilter] = useState<FilterTipe>("semua");
+  /** Foto yang sedang dirotasi ke dalam file (tombol putar dinonaktifkan sementara). */
+  const [rotasiProses, setRotasiProses] = useState<Record<string, boolean>>({});
+  /** Mirror kiriman terbaru agar hasil upload lambat tidak menimpa perubahan lain. */
+  const submisiRef = useRef(submissions);
+  submisiRef.current = submissions;
   /** Sorting kolom — kelompok jenis tugas (latihan/LKPD/evaluasi) selalu dijaga utuh. */
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 } | null>(null);
 
@@ -105,7 +152,7 @@ function Content() {
     });
     const n = nilai === "" ? current.nilai : Math.min(100, Math.max(0, Math.round(Number(nilai) || 0)));
     updateSubmission(current.id, { nilai: n, feedbackGuru: catatan, feedbackAi: patchedAi, status: "dinilai" });
-    addNotification({ userId: current.siswaId, kategori: "nilai", judul: "Hasil evaluasi telah dinilai", isi: `${currentAssign?.judul}: nilai ${n}. ${catatan.slice(0, 100)}` });
+    addNotification({ userId: current.siswaId, kategori: "nilai", judul: "Kiriman sudah diperiksa guru", isi: `${currentAssign?.judul}: nilai ${n} — status "Sudah diperiksa". ${catatan.slice(0, 100)}` });
     setOpenId(null);
   }
 
@@ -212,10 +259,26 @@ function Content() {
                     <div className="flex flex-wrap gap-3">
                       {current.jawabanLampiran[q.id].map((file, index) => {
                         const deg = current.fotoRotasi?.[file.url] ?? 0;
+                        const memasak = Boolean(rotasiProses[file.url]);
                         const rotate = (next: number) => {
-                          if (!current) return;
-                          updateSubmission(current.id, {
-                            fotoRotasi: { ...(current.fotoRotasi || {}), [file.url]: ((next % 360) + 360) % 360 },
+                          if (!current || memasak) return;
+                          const n = ((next % 360) + 360) % 360;
+                          const urlLama = file.url;
+                          // 1) Tampilan langsung berputar (responsif).
+                          updateSubmission(current.id, { fotoRotasi: { ...(current.fotoRotasi || {}), [urlLama]: n } });
+                          // 2) Putaran ditulis ke file baru — orientasi ikut tersimpan,
+                          //    sehingga siswa/admin juga melihat hasil rotasi yang sama.
+                          setRotasiProses((p) => ({ ...p, [urlLama]: true }));
+                          void bakeRotation(file, n).then((baru) => {
+                            setRotasiProses((p) => { const c = { ...p }; delete c[urlLama]; return c; });
+                            if (!baru) return; // gagal (mis. CORS) → tetap memakai rotasi tampilan
+                            const segar = submisiRef.current.find((x) => x.id === current.id);
+                            if (!segar) return;
+                            const daftar = [...(segar.jawabanLampiran?.[q.id] || [])];
+                            daftar[index] = baru;
+                            const rotasi = { ...(segar.fotoRotasi || {}) };
+                            delete rotasi[urlLama];
+                            updateSubmission(current.id, { jawabanLampiran: { ...(segar.jawabanLampiran || {}), [q.id]: daftar }, fotoRotasi: rotasi });
                           });
                         };
                         return (
@@ -229,9 +292,9 @@ function Content() {
                               />
                             </a>
                             <div className="flex justify-center gap-1 mt-1">
-                              <button type="button" aria-label="Putar kiri" title="Putar kiri" className="h-6 w-6 rounded border border-line bg-white text-[13px] text-ink-muted hover:border-primary-300 hover:text-primary" onClick={() => rotate(deg - 90)}>⟲</button>
-                              <button type="button" aria-label="Putar kanan" title="Putar kanan" className="h-6 w-6 rounded border border-line bg-white text-[13px] text-ink-muted hover:border-primary-300 hover:text-primary" onClick={() => rotate(deg + 90)}>⟳</button>
-                              <span className="h-6 px-1.5 inline-flex items-center text-[11px] text-ink-faint tabular-nums">{((deg % 360) + 360) % 360}°</span>
+                              <button type="button" aria-label="Putar kiri" title={memasak ? "Memproses…" : "Putar kiri"} disabled={memasak} className="h-6 w-6 rounded border border-line bg-white text-[13px] text-ink-muted hover:border-primary-300 hover:text-primary disabled:opacity-50" onClick={() => rotate(deg - 90)}>⟲</button>
+                              <button type="button" aria-label="Putar kanan" title={memasak ? "Memproses…" : "Putar kanan"} disabled={memasak} className="h-6 w-6 rounded border border-line bg-white text-[13px] text-ink-muted hover:border-primary-300 hover:text-primary disabled:opacity-50" onClick={() => rotate(deg + 90)}>⟳</button>
+                              <span className="h-6 px-1.5 inline-flex items-center text-[11px] text-ink-faint tabular-nums">{memasak ? "…" : `${((deg % 360) + 360) % 360}°`}</span>
                             </div>
                           </div>
                         );

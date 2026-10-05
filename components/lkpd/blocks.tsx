@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import type { LkpdBlock } from "@/lib/types";
+import type { LkpdAktivitas, LkpdBlock } from "@/lib/types";
+import { BLOOM_LABEL } from "@/lib/types";
+import { selSama } from "@/lib/lkpd";
 import { drivePreviewUrl, isDriveUrl, youtubeEmbed } from "@/lib/utils";
 import { Aktivitas } from "./activities";
 
@@ -13,20 +15,30 @@ export const BLOCK_LABEL: Record<LkpdBlock["tipe"], string> = {
   animasi: "🎞️ Animation",
   berkas: "📎 File",
   pertanyaan: "❓ Question",
+  essay: "✍️ Essay",
   aktivitas: "🧩 Interactive Activity",
   petunjuk: "💡 Hint",
   refleksi: "💬 Reflection",
 };
 
-/** Render satu content block persis seperti yang dilihat siswa. */
+/**
+ * Render satu content block persis seperti yang dilihat siswa.
+ * - `readOnly` = LKPD sudah dikumpulkan → jawaban ditampilkan apa adanya, tak bisa diubah.
+ * - `bukaKunci` = guru/admin MENGIZINKAN kunci/pembahasan tampil (baru aktif setelah
+ *   LKPD dikumpulkan). Tanpa izin ini siswa TIDAK melihat benar/salah maupun kunci.
+ */
 export function BlokRenderer({
   blok,
   jawaban,
   onSimpan,
+  readOnly = false,
+  bukaKunci = false,
 }: {
   blok: LkpdBlock;
   jawaban?: string;
   onSimpan?: (teks: string) => void;
+  readOnly?: boolean;
+  bukaKunci?: boolean;
 }) {
   switch (blok.tipe) {
     case "teks":
@@ -119,22 +131,147 @@ export function BlokRenderer({
       return <Petunjuk blok={blok} />;
 
     case "refleksi":
-      return <Refleksi blok={blok} jawaban={jawaban} onSimpan={onSimpan} />;
+      return <Refleksi blok={blok} jawaban={jawaban} onSimpan={readOnly ? undefined : onSimpan} readOnly={readOnly} />;
+
+    case "essay":
+      return <Refleksi blok={blok} jawaban={jawaban} onSimpan={readOnly ? undefined : onSimpan} readOnly={readOnly} essay />;
 
     case "pertanyaan":
-      return <Pertanyaan blok={blok} jawaban={jawaban} onSimpan={onSimpan} />;
+      return <Pertanyaan blok={blok} jawaban={jawaban} onSimpan={readOnly ? undefined : onSimpan} readOnly={readOnly} bukaKunci={bukaKunci} />;
 
     case "aktivitas":
       return blok.aktivitas ? (
         <div>
           {blok.judul ? <p className="text-[14.5px] font-semibold mb-1.5">{blok.judul}</p> : null}
-          <Aktivitas a={blok.aktivitas} nilai={jawaban} onNilai={onSimpan} />
+          <BloomTag bloom={blok.bloom} />
+          {readOnly ? (
+            <RingkasAktivitas a={blok.aktivitas} nilai={jawaban} tampilkanKunci={bukaKunci} />
+          ) : (
+            <Aktivitas a={blok.aktivitas} nilai={jawaban} onNilai={onSimpan} />
+          )}
         </div>
       ) : null;
 
     default:
       return null;
   }
+}
+
+/** Penanda level Taksonomi Bloom revisi pada sebuah blok. */
+export function BloomTag({ bloom }: { bloom?: LkpdBlock["bloom"] }) {
+  if (!bloom) return null;
+  return (
+    <span className="inline-flex items-center rounded-md border border-primary-100 bg-primary-50 px-2 py-0.5 text-[11.5px] font-medium text-primary">
+      {BLOOM_LABEL[bloom]}
+    </span>
+  );
+}
+
+/**
+ * Ringkasan aktivitas dalam mode terkunci (LKPD sudah dikumpulkan).
+ * Jawaban siswa ditampilkan apa adanya; benar/salah & kunci hanya bila guru mengizinkan.
+ */
+function RingkasAktivitas({ a, nilai, tampilkanKunci }: { a: LkpdAktivitas; nilai?: string; tampilkanKunci: boolean }) {
+  type StateRingkas = { diArea?: string[]; pasang?: Record<string, string>; val?: Record<string, string> };
+  let st: StateRingkas | null = null;
+  try {
+    const o: unknown = nilai ? JSON.parse(nilai) : null;
+    if (o && typeof o === "object") st = o as StateRingkas;
+  } catch {}
+
+  if (a.tipe === "seret-slot") {
+    const kartu = a.kartu || [];
+    const di = (st?.diArea || []).filter((id) => kartu.some((k) => k.id === id));
+    const sisa = kartu.filter((k) => !di.includes(k.id));
+    return (
+      <div className="rounded-xl border border-line bg-wash/50 card-pad !p-3.5">
+        <p className="text-[13px] font-semibold mb-1">🧩 {a.instruksi}</p>
+        {di.length ? (
+          <ul className="space-y-1.5 mt-2">
+            {di.map((id) => {
+              const k = kartu.find((x) => x.id === id);
+              return k ? (
+                <li key={id} className="text-[13px] rounded-lg border border-line bg-white px-3 py-1.5">
+                  <b>{k.label}</b> → {k.hasil}
+                </li>
+              ) : null;
+            })}
+          </ul>
+        ) : (
+          <p className="text-[13px] text-ink-faint italic mt-1">Belum ada kartu yang dipindahkan</p>
+        )}
+        {sisa.length ? <p className="text-[12.5px] text-ink-faint mt-2">Belum dipindahkan: {sisa.map((k) => k.label).join(" · ")}</p> : null}
+        {tampilkanKunci && di.length && a.temuan ? <p className="text-[13px] text-green-700 mt-2">🎉 {a.temuan}</p> : null}
+      </div>
+    );
+  }
+
+  if (a.tipe === "cocokkan") {
+    const kiri = a.kiri || [];
+    const kanan = a.kanan || [];
+    const pasang = st?.pasang || {};
+    const terpasang = kiri.filter((k) => pasang[k.id]);
+    return (
+      <div className="rounded-xl border border-line bg-wash/50 card-pad !p-3.5">
+        <p className="text-[13px] font-semibold mb-1">🧩 {a.instruksi}</p>
+        <p className="text-[13px] text-ink-muted mt-1">{terpasang.length} dari {kiri.length} pasangan sudah dibuat.</p>
+        {tampilkanKunci && terpasang.length ? (
+          <ul className="space-y-1.5 mt-2">
+            {terpasang.map((k) => (
+              <li key={k.id} className="text-[13px] rounded-lg border border-line bg-white px-3 py-1.5">
+                {k.label} ↔ <b>{kanan.find((n) => n.id === pasang[k.id])?.label || "?"}</b>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </div>
+    );
+  }
+
+  const val = st?.val || {};
+  const kolom = a.kolom || [];
+  const baris = a.baris || [];
+  const terisi = Object.values(val).filter((v) => String(v).trim() !== "").length;
+  return (
+    <div className="rounded-xl border border-line bg-wash/50 card-pad !p-3.5">
+      <p className="text-[13px] font-semibold mb-2">📊 {a.instruksi}</p>
+      {terisi === 0 ? (
+        <p className="text-[13px] text-ink-faint italic">Belum ada sel yang diisi</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-[13px] min-w-[380px]">
+            <thead>
+              <tr className="text-left text-[12px] text-ink-muted">
+                {kolom.map((c) => (
+                  <th key={c} className="px-2 py-1.5 font-medium">{c}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {baris.map((r, ri) => (
+                <tr key={ri}>
+                  {r.sel.map((s, ci) => {
+                    if (s.teks !== undefined) return <td key={ci} className="px-2 py-1.5 text-ink-soft">{s.teks}</td>;
+                    const kunci = (s.kunci || "").trim();
+                    const v = val[`${ri}-${ci}`] || "";
+                    const benar = tampilkanKunci && kunci && selSama(v, kunci);
+                    return (
+                      <td key={ci} className="px-2 py-1.5">
+                        <span className={`block rounded border px-2 py-1 text-[13px] ${benar ? "border-green-300 bg-green-50 text-green-800" : "border-line bg-white"}`}>
+                          {v || <span className="text-ink-faint">—</span>}
+                        </span>
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {tampilkanKunci ? <p className="text-[12.5px] text-ink-muted mt-2">Hijau = sesuai kunci.</p> : null}
+    </div>
+  );
 }
 
 function Petunjuk({ blok }: { buka?: boolean; blok: LkpdBlock }) {
@@ -157,34 +294,75 @@ function Petunjuk({ blok }: { buka?: boolean; blok: LkpdBlock }) {
   );
 }
 
-function Refleksi({ blok, jawaban, onSimpan }: { blok: LkpdBlock; jawaban?: string; onSimpan?: (t: string) => void }) {
+function Refleksi({
+  blok,
+  jawaban,
+  onSimpan,
+  readOnly = false,
+  essay = false,
+}: {
+  blok: LkpdBlock;
+  jawaban?: string;
+  onSimpan?: (t: string) => void;
+  readOnly?: boolean;
+  essay?: boolean;
+}) {
   const [v, setV] = useState(jawaban || "");
   const [tersimpan, setTersimpan] = useState(true);
   return (
     <div className="card card-pad">
-      <p className="text-[14.5px] font-semibold mb-1">💬 {blok.judul || "Refleksi"}</p>
-      {blok.teks ? <p className="muted mb-2">{blok.teks}</p> : null}
+      <p className="text-[14.5px] font-semibold mb-1">
+        {essay ? "✍️" : "💬"} {blok.judul || (essay ? "Pertanyaan essay" : "Refleksi")}
+      </p>
+      <div className="mb-2">
+        <BloomTag bloom={blok.bloom} />
+      </div>
+      {blok.teks ? <p className="muted mb-2 whitespace-pre-wrap">{blok.teks}</p> : null}
+      {blok.rubrik ? <p className="text-[12.5px] text-ink-muted mb-2">📌 Rubrik penilaian: {blok.rubrik}</p> : null}
       <textarea
         className="input min-h-[110px]"
         value={v}
-        placeholder="Tulis jawaban / refleksimu di sini…"
+        readOnly={readOnly}
+        placeholder={essay ? "Jelaskan proses berpikirmu: strategi, alasan, dan kesimpulan…" : "Tulis jawaban / refleksimu di sini…"}
         onChange={(e) => {
+          if (readOnly) return;
           setV(e.target.value);
           // Simpan otomatis — jawaban tetap ada walau siswa berpindah mission lalu kembali.
           onSimpan?.(e.target.value);
           setTersimpan(true);
         }}
       />
-      <p className={`mt-2 text-[12.5px] ${tersimpan ? "text-green-700" : "text-ink-faint"}`}>
-        {tersimpan ? "✓ Jawaban tersimpan otomatis — aman berpindah mission" : "Menyimpan…"}
-      </p>
+      {readOnly ? (
+        <p className="mt-2 text-[12.5px] text-ink-muted">🔒 Jawaban terkunci — LKPD sudah dikumpulkan.</p>
+      ) : (
+        <p className={`mt-2 text-[12.5px] ${tersimpan ? "text-green-700" : "text-ink-faint"}`}>
+          {tersimpan ? "✓ Jawaban tersimpan otomatis — aman berpindah mission" : "Menyimpan…"}
+        </p>
+      )}
+      {essay ? (
+        <p className="mt-1 text-[12.5px] text-ink-muted">
+          Jawaban terbuka ini <b>tidak dinilai otomatis</b> — menunggu pemeriksaan guru setelah kamu mengumpulkan.
+        </p>
+      ) : null}
     </div>
   );
 }
 
-/** Pertanyaan pilihan ganda dengan feedback edukatif + petunjuk progresif.
+/** Pertanyaan pilihan ganda — kunci/feedback HANYA tampil bila guru mengizinkan (`bukaKunci`).
  *  Pilihan siswa ikut tersimpan di progres → bolak-balik mission tidak menghapusnya. */
-function Pertanyaan({ blok, jawaban, onSimpan }: { blok: LkpdBlock; jawaban?: string; onSimpan?: (t: string) => void }) {
+function Pertanyaan({
+  blok,
+  jawaban,
+  onSimpan,
+  readOnly = false,
+  bukaKunci = false,
+}: {
+  blok: LkpdBlock;
+  jawaban?: string;
+  onSimpan?: (t: string) => void;
+  readOnly?: boolean;
+  bukaKunci?: boolean;
+}) {
   const q = blok.pertanyaan;
   const awalPilih = (() => {
     if (jawaban === undefined || jawaban === "") return null;
@@ -195,16 +373,22 @@ function Pertanyaan({ blok, jawaban, onSimpan }: { blok: LkpdBlock; jawaban?: st
   const [hint, setHint] = useState(0);
   if (!q) return null;
   const pilihDanSimpan = (i: number) => {
+    if (readOnly) return;
     setPilih(i);
     onSimpan?.(String(i));
   };
   const dipilih = pilih !== null ? q.opsi[pilih] : null;
   const benar = Boolean(dipilih?.benar);
   const hints = q.petunjuk || [];
+  // Benar/salah & kunci hanya setelah LKPD dikumpulkan DAN guru mengizinkan.
+  const tampilKunci = bukaKunci;
 
   return (
     <div className="card card-pad">
       {blok.judul ? <p className="text-[13px] font-semibold uppercase tracking-wide text-ink-faint mb-1.5">❓ {blok.judul}</p> : null}
+      <div className="mb-2">
+        <BloomTag bloom={blok.bloom} />
+      </div>
       <p className="text-[14.5px] font-medium mb-3 whitespace-pre-line">{q.teks}</p>
       <div className="space-y-2">
         {q.opsi.map((o, i) => {
@@ -212,19 +396,25 @@ function Pertanyaan({ blok, jawaban, onSimpan }: { blok: LkpdBlock; jawaban?: st
           const setelah = pilih !== null;
           const gaya = !setelah
             ? "border-line bg-white hover:border-primary-200"
-            : dipilihIni
-              ? o.benar ? "border-green-300 bg-green-50" : "border-red-300 bg-red-50"
-              : o.benar ? "border-green-200 bg-green-50/50" : "border-line bg-white opacity-70";
+            : tampilKunci
+              ? dipilihIni
+                ? o.benar ? "border-green-300 bg-green-50" : "border-red-300 bg-red-50"
+                : o.benar ? "border-green-200 bg-green-50/50" : "border-line bg-white opacity-70"
+              : // Kunci tertutup: tandai hanya pilihan siswa, tanpa menyebut benar/salah.
+                dipilihIni
+                  ? "border-primary-200 bg-primary-50/70"
+                  : "border-line bg-white opacity-80";
           return (
             <button key={i} className={`w-full text-left rounded-lg border px-3.5 py-2.5 text-[13.5px] transition-colors ${gaya}`} onClick={() => pilihDanSimpan(i)}>
               <span className="font-medium">{String.fromCharCode(65 + i)}.</span> {o.teks}
-              {setelah && dipilihIni && o.benar ? <span className="text-green-700 font-semibold"> ✓</span> : null}
+              {setelah && dipilihIni && tampilKunci && o.benar ? <span className="text-green-700 font-semibold"> ✓</span> : null}
+              {setelah && dipilihIni && !tampilKunci ? <span className="text-primary font-semibold"> ✓ pilihanmu</span> : null}
             </button>
           );
         })}
       </div>
 
-      {dipilih ? (
+      {!dipilih ? null : tampilKunci ? (
         <div className={`mt-3 rounded-lg px-3.5 py-2.5 text-[13.5px] ${benar ? "bg-green-50 border border-green-200 text-green-800" : "bg-amber-50 border border-amber-200 text-amber-900"}`}>
           <p className="font-semibold mb-0.5">{benar ? "🎉 Benar — pemahamanmu tepat!" : "Belum tepat — mari kita pikirkan lagi."}</p>
           <p>{benar ? q.feedbackBenar || dipilih.feedback : dipilih.feedback}</p>
@@ -244,7 +434,9 @@ function Pertanyaan({ blok, jawaban, onSimpan }: { blok: LkpdBlock; jawaban?: st
           ) : null}
         </div>
       ) : (
-        hints.length > 0 && pilih !== null ? null : null
+        <p className="mt-3 rounded-lg border border-line bg-wash px-3.5 py-2.5 text-[13px] text-ink-muted">
+          ✓ Pilihan tersimpan. Benar/salah dan pembahasan dibuka setelah LKPD dikumpulkan (bila guru mengizinkan).
+        </p>
       )}
     </div>
   );

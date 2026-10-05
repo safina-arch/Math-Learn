@@ -20,9 +20,12 @@ function Content() {
   const { cheatLogs, assignments } = useStore();
   const [cheatSiswa, setCheatSiswa] = useState<string | null>(null);
 
-  // Kelompokkan laporan kecurangan per peserta (foto = menambahkan foto, bukan pelanggaran).
+  // Kelompokkan laporan kecurangan per peserta. Foto = aktivitas normal (bukan pelanggaran)
+  // sehingga TIDAK ikut menghitung jumlah pelanggaran.
+  const pelanggaran = cheatLogs.filter((c) => c.tipe !== "foto");
+  const aktivitasFoto = cheatLogs.length - pelanggaran.length;
   const cheatBySiswa = new Map<string, { nama: string; logs: typeof cheatLogs }>();
-  for (const c of cheatLogs) {
+  for (const c of pelanggaran) {
     const g = cheatBySiswa.get(c.siswaId) || { nama: c.siswaNama, logs: [] as typeof cheatLogs };
     g.logs.push(c);
     cheatBySiswa.set(c.siswaId, g);
@@ -39,8 +42,8 @@ function Content() {
 
       <div className="card overflow-hidden">
         <div className="px-4 py-3 border-b border-line">
-          <p className="h2">Laporan kecurangan ({cheatLogs.length} kejadian · {pesertaCheat.length} peserta)</p>
-          <p className="muted mt-0.5">Klik nama peserta untuk melihat detail: jenis kecurangan, menit kejadian, dan nomor soal terindikasi. Foto jawaban siswa tidak dihitung pelanggaran.</p>
+          <p className="h2">Laporan kecurangan ({pelanggaran.length} kejadian · {pesertaCheat.length} peserta{aktivitasFoto ? ` · ${aktivitasFoto} aktivitas foto (tidak dihitung)` : ""})</p>
+          <p className="muted mt-0.5">Klik nama peserta untuk melihat detail: jenis kecurangan, menit kejadian, dan nomor soal terindikasi. Foto jawaban, refresh saat pindah halaman, dan buka halaman lain tidak dihitung pelanggaran.</p>
         </div>
         {pesertaCheat.length === 0 ? <Empty title="Belum ada pelanggaran" desc="Laporan akan muncul otomatis saat siswa pindah tab atau minimize saat mengerjakan evaluasi." /> : (
           <div className="divide-y divide-line">

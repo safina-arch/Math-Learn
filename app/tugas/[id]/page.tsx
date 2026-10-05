@@ -7,7 +7,7 @@ import { AppShell, Guard } from "@/components/shell";
 import { AnswerUpload } from "@/components/answer-upload";
 import { Badge, Modal } from "@/components/ui";
 import { useStore } from "@/lib/store";
-import { heuristicGrade, nowIso, pgCorrect, uid } from "@/lib/utils";
+import { heuristicGrade, nowIso, pgCorrect, statusTugas, STATUS_TUGAS_META, uid } from "@/lib/utils";
 
 /** Draf "Simpan & keluar" per tugas + siswa — bertahan walau tab ditutup. */
 function draftKey(aId: string, userId: string) {
@@ -38,11 +38,18 @@ function Work() {
   const loadedDraft = useRef(false);
   const hydrated = useRef(false);
 
-  // Pulihkan draf "Simpan & keluar" saat halaman dibuka.
+  // Pulihkan jawaban saat halaman dibuka: kiriman yang sudah ada menang (sekali kerja),
+  // baru draf "Simpan & keluar" bila belum pernah mengumpulkan.
   useEffect(() => {
     if (!a || !user || loadedDraft.current) return;
     loadedDraft.current = true;
     try {
+      const sub = submissions.find((s) => s.assignmentId === a.id && s.siswaId === user.id);
+      if (sub) {
+        setAnswers(sub.jawaban || {});
+        if (sub.jawabanLampiran && Object.keys(sub.jawabanLampiran).length) setAnswerAttachments(sub.jawabanLampiran);
+        return;
+      }
       const raw = localStorage.getItem(draftKey(a.id, user.id));
       if (raw) {
         const d = JSON.parse(raw) as { answers?: Record<string, string>; attachments?: Record<string, import("@/lib/types").MaterialAttachment[]> };
@@ -55,8 +62,10 @@ function Work() {
   }, [a?.id, user?.id]);
 
   // Simpan draf otomatis setiap ada perubahan (lewati render pertama sebelum draf dipulihkan).
+  // Kiriman yang sudah dikumpulkan TIDAK ditulis ulang ke draf — sekali kerja.
   useEffect(() => {
     if (!a || !user || !loadedDraft.current) return;
+    if (already) return;
     if (!hydrated.current) {
       hydrated.current = true;
       return;
@@ -75,23 +84,36 @@ function Work() {
 
   if (!a) return <div className="page-wrap !px-0"><p className="muted">Tugas tidak ditemukan.</p></div>;
   const already = submissions.find((s) => s.assignmentId === a.id && s.siswaId === user?.id);
+  /** Sekali kerja: setelah dikumpulkan soal & jawaban terkunci (draf tidak bisa diulang). */
+  const terkunci = Boolean(already);
+  const stTugas = statusTugas(already);
   const backHref = a.tipe === "lkpd" ? "/lkpd" : "/latihan";
 
   async function submit() {
     if (!user || busy) return;
+    if (already) return; // sekali kerja: kiriman sudah ada, tidak boleh ditimpa
     setBusy(true);
     try {
       let pgScore = 0;
       let pgBobot = 0;
+      let totalBobot = 0;
       const feedbackAi: Record<string, { skor: number; feedback: string; draft: boolean }> = {};
       for (const q of a!.questions) {
+        totalBobot += q.bobot;
         const ans = answers[q.id] || "";
         if (q.tipe === "pg") {
           pgBobot += q.bobot;
           const ok = pgCorrect(ans, q.kunci);
           if (ok) pgScore += q.bobot;
-          feedbackAi[q.id] = { skor: ok ? 100 : 0, feedback: ok ? "Jawaban tepat." : `Kunci yang benar: ${q.kunci}.`, draft: false };
+          // Kunci TIDAK ditampilkan ke siswa di sini — hanya guru yang melihatnya saat memeriksa.
+          feedbackAi[q.id] = {
+            skor: ok ? 100 : 0,
+            feedback: ok ? "Jawaban tepat." : "Belum tepat — jawabanmu disimpan dan menunggu pemeriksaan guru.",
+            draft: false,
+          };
         } else {
+          // Uraian/essay: TIDAK dianggap benar oleh sistem. Saran AI/heuristic hanya draf
+          // untuk guru — nilai akhir ditentukan setelah guru memeriksa.
           let graded = heuristicGrade(q.teks, ans, q.kunci, q.rubrik, q.bobot);
           try {
             const r = await fetch("/api/ai/grade", {
@@ -107,11 +129,10 @@ function Work() {
           feedbackAi[q.id] = { ...graded, draft: true };
         }
       }
-      let total = pgScore;
-      for (const q of a!.questions.filter((q) => q.tipe !== "pg")) {
-        total += Math.round(((feedbackAi[q.id]?.skor || 0) / 100) * q.bobot);
-      }
-      total = Math.min(100, Math.max(0, Math.round(total)));
+      // Nilai sementara: hanya dari poin yang benar-benar dinilai sistem (PG).
+      // Bobot uraian/essay sementara 0 — bertambah saat guru memberi nilai.
+      const total = totalBobot > 0 ? Math.min(100, Math.max(0, Math.round((pgScore / totalBobot) * 100))) : 0;
+      const adaTerbuka = a!.questions.some((q) => q.tipe !== "pg");
       addSubmission({
         id: uid("s"),
         assignmentId: a!.id,
@@ -123,11 +144,17 @@ function Work() {
         nilai: a!.tipe === "latihan" ? total : null,
         feedbackAi,
         feedbackGuru: "",
-        status: a!.tipe === "latihan" ? "dinilai" : "draf-ai",
+        // Belum diperiksa sampai guru menerbitkan nilai di menu Periksa.
+        status: a!.tipe === "latihan" ? "menunggu" : "draf-ai",
         submittedAt: nowIso(),
         cheatCount: 0,
       });
-      addNotification({ userId: "all-guru", kategori: "kiriman", judul: `${user.nama} mengumpulkan ${a!.judul}`, isi: `Nilai sementara ${total}. Perlu ${a!.tipe === "latihan" ? "verifikasi" : "penilaian"}.` });
+      addNotification({
+        userId: "all-guru",
+        kategori: "kiriman",
+        judul: `${user.nama} mengumpulkan ${a!.judul}`,
+        isi: `Nilai sementara ${total}${adaTerbuka ? " (sebagian soal menunggu pemeriksaan)" : ""}. Perlu pemeriksaan guru.`,
+      });
       try { localStorage.removeItem(draftKey(a!.id, user.id)); } catch {}
       const pgBenar = a!.questions.filter((q) => q.tipe === "pg" && pgCorrect(answers[q.id] || "", q.kunci)).length;
       setResult({ nilai: total, pgBenar });
@@ -144,6 +171,7 @@ function Work() {
         <Badge tone="purple">{a.tipe.toUpperCase()}</Badge>
         <Badge>{a.kelas}</Badge>
         {already ? <Badge tone="green">Sudah dikumpulkan</Badge> : null}
+        {already ? <Badge tone={stTugas === "sudah" ? "green" : "amber"}>{already.nilai != null ? `Nilai sementara ${already.nilai} · ` : ""}{STATUS_TUGAS_META[stTugas].label}</Badge> : null}
         {draftRestored && !already ? <Badge tone="blue">Draf dipulihkan</Badge> : null}
       </div>
       <h1 className="h1 mt-2">{a.judul}</h1>
@@ -175,36 +203,67 @@ function Work() {
             {q.tipe === "pg" ? (
               <div className="mt-3 space-y-1.5">
                 {q.opsi?.map((op) => (
-                  <label key={op} className={`flex items-center gap-2.5 rounded-lg border px-3 py-2 text-[14px] cursor-pointer transition-colors ${answers[q.id] === op ? "border-primary bg-primary-50/60" : "border-line hover:bg-wash/70"}`}>
-                    <input type="radio" name={q.id} className="accent-[#7209B7]" checked={answers[q.id] === op} onChange={() => setAnswers((p) => ({ ...p, [q.id]: op }))} />
+                  <label key={op} className={`flex items-center gap-2.5 rounded-lg border px-3 py-2 text-[14px] transition-colors ${terkunci ? "cursor-default" : "cursor-pointer"} ${answers[q.id] === op ? "border-primary bg-primary-50/60" : "border-line hover:bg-wash/70"}`}>
+                    <input type="radio" name={q.id} className="accent-[#7209B7]" checked={answers[q.id] === op} disabled={terkunci} onChange={() => setAnswers((p) => ({ ...p, [q.id]: op }))} />
                     {op}
                   </label>
                 ))}
               </div>
             ) : (
-              <textarea className="input mt-3 min-h-[96px]" value={answers[q.id] || ""} onChange={(e) => setAnswers((p) => ({ ...p, [q.id]: e.target.value }))} placeholder={q.tipe === "essay" ? "Jelaskan langkah dan alasanmu…" : "Tulis jawaban singkat…"} />
+              <textarea className="input mt-3 min-h-[96px]" readOnly={terkunci} value={answers[q.id] || ""} onChange={(e) => setAnswers((p) => ({ ...p, [q.id]: e.target.value }))} placeholder={q.tipe === "essay" ? "Jelaskan langkah dan alasanmu…" : "Tulis jawaban singkat…"} />
             )}
-            <AnswerUpload attachments={answerAttachments[q.id] || []} onChange={(files) => setAnswerAttachments((current) => ({ ...current, [q.id]: files }))} />
+            {terkunci ? (
+              (answerAttachments[q.id]?.length || 0) > 0 ? (
+                <div className="flex flex-wrap gap-2 mt-3">
+                  {answerAttachments[q.id].map((f, fi) => (
+                    <a key={`${f.url}-${fi}`} href={f.url} target="_blank" rel="noreferrer">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={f.url} alt={f.name || "Foto jawaban"} className="h-20 w-20 rounded-lg border border-line object-cover bg-white" />
+                    </a>
+                  ))}
+                </div>
+              ) : null
+            ) : (
+              <AnswerUpload attachments={answerAttachments[q.id] || []} onChange={(files) => setAnswerAttachments((current) => ({ ...current, [q.id]: files }))} />
+            )}
           </div>
         ))}
-        <div className="flex gap-2">
-          <button className="btn-primary" disabled={busy} onClick={() => setAsk(true)}>{busy ? "Menilai…" : already ? "Kumpulkan ulang" : "Kumpulkan jawaban"}</button>
-          <button
-            className="btn-ghost"
-            onClick={() => {
-              try {
-                if (user) localStorage.setItem(draftKey(a.id, user.id), JSON.stringify({ answers, attachments: answerAttachments }));
-              } catch {}
-              router.push(backHref);
-            }}
-          >Simpan & keluar</button>
-        </div>
-        <p className="muted">Pilihan ganda dinilai otomatis. Uraian & essay dibantu AI lalu diverifikasi guru. Jawabanmu tersimpan otomatis sebagai draf.</p>
+        {terkunci ? (
+          <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3">
+            <p className="text-[13.5px] font-semibold text-amber-900">🔒 Sudah dikumpulkan — tugas ini hanya bisa dikerjakan satu kali.</p>
+            <p className="text-[13px] text-amber-800 mt-1">
+              Jawabanmu tersimpan dan menunggu pemeriksaan guru. Refresh halaman, logout, atau login ulang tidak membuat
+              tugas bisa dikerjakan ulang.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Link href="/nilai" className="btn-primary !py-2 !text-[13px]">Lihat nilai &amp; status</Link>
+              <Link href={backHref} className="btn-ghost !py-2 !text-[13px]">Kembali ke daftar</Link>
+            </div>
+          </div>
+        ) : (
+          <div className="flex gap-2">
+            <button className="btn-primary" disabled={busy} onClick={() => setAsk(true)}>{busy ? "Menilai…" : "Kumpulkan jawaban"}</button>
+            <button
+              className="btn-ghost"
+              onClick={() => {
+                try {
+                  if (user) localStorage.setItem(draftKey(a.id, user.id), JSON.stringify({ answers, attachments: answerAttachments }));
+                } catch {}
+                router.push(backHref);
+              }}
+            >Simpan & keluar</button>
+          </div>
+        )}
+        <p className="muted">
+          Pilihan ganda dinilai otomatis dan nilainya tampil sebagai <b>nilai sementara</b>. Uraian &amp; essay{" "}
+          <b>tidak dianggap benar oleh sistem</b> — penilaian akhir setelah guru memeriksa. Jawabanmu tersimpan otomatis
+          sebagai draf sampai dikumpulkan.
+        </p>
       </div>
 
       <Modal open={ask} onClose={() => setAsk(false)} title="Yakin mengumpulkan?">
-        <p className="text-[14.5px]">Jawaban akan dikirim ke guru{already ? " — kiriman sebelumnya akan ditimpa" : ""}.</p>
-        <p className="muted mt-2">Periksa kembali semua jawaban dan foto sebelum mengirim. Setelah dikumpulkan, jawaban tidak dapat diubah lagi.</p>
+        <p className="text-[14.5px]">Jawaban akan dikirim ke guru.</p>
+        <p className="muted mt-2">Periksa kembali semua jawaban dan foto sebelum mengirim. Setelah dikumpulkan, tugas tidak dapat dikerjakan ulang dan jawaban tidak dapat diubah lagi.</p>
         <div className="mt-4 flex gap-2">
           <button
             className="btn-primary flex-1"
@@ -218,11 +277,15 @@ function Work() {
       <Modal open={!!result} onClose={() => { setResult(null); router.push("/nilai"); }} title="🎉 Jawaban berhasil dikirim">
         <div className="text-center py-1">
           <p className="text-[44px] font-bold tracking-tight">{result?.nilai}</p>
-          <p className="muted">Pilihan ganda benar {result?.pgBenar} soal{a.tipe !== "latihan" ? ". Uraian & essay dibantu AI" : ""}.</p>
+          <p className="text-[13px] font-semibold uppercase tracking-wide text-ink-faint -mt-2">Nilai sementara</p>
+          <p className="muted mt-2">Pilihan ganda benar {result?.pgBenar} soal{a.tipe !== "latihan" ? ". Uraian & essay belum dinilai sistem" : ""}.</p>
         </div>
         <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-center">
-          <p className="text-[15px] font-semibold text-amber-900">⏳ Nilai sedang menunggu untuk diverifikasi oleh guru</p>
-          <p className="text-[13px] text-amber-800 mt-1">Status kirimanmu: <b>Menunggu verifikasi</b> — nilai berubah menjadi fiks setelah guru menyetujuinya.</p>
+          <p className="text-[15px] font-semibold text-amber-900">⏳ Menunggu pemeriksaan guru</p>
+          <p className="text-[13px] text-amber-800 mt-1">
+            Status kirimanmu: <b>Belum diperiksa</b> — nilai akhir &amp; feedback muncul setelah guru memeriksa jawabanmu.
+          </p>
+          <p className="text-[12.5px] text-amber-800 mt-1">Tugas ini sekali kerja — jawaban tidak bisa diubah lagi.</p>
         </div>
         <div className="mt-4 flex gap-2">
           <button className="btn-primary flex-1" onClick={() => router.push("/nilai")}>Lihat nilai & status</button>

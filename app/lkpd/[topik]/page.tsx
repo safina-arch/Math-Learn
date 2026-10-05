@@ -120,13 +120,13 @@ export default function TopikPage() {
                           <span className="text-[12.5px] text-ink-muted">
                             {dinilai.length ? `rata-rata · ${dinilai.length} dari ${jumlahSiswa || dinilai.length} siswa dinilai` : "belum ada nilai"}
                           </span>
-                          {menunggu ? <Badge tone="amber">{menunggu} menunggu verifikasi</Badge> : null}
+                          {menunggu ? <Badge tone="amber">{menunggu} belum diperiksa</Badge> : null}
                         </>
                       ) : (
                         <>
                           <span className="text-[17px] font-bold">{nilaiSendiri ?? "—"}</span>
                           {nilaiSendiri != null ? (
-                            <Badge tone={pr?.verifikasi ? "green" : "amber"}>{pr?.verifikasi ? "Terverifikasi ✓" : "Menunggu verifikasi"}</Badge>
+                            <Badge tone={pr?.verifikasi ? "green" : "amber"}>{pr?.verifikasi ? "Sudah diperiksa ✓" : "Belum diperiksa"}</Badge>
                           ) : (
                             <span className="text-[12.5px] text-ink-faint">nilai terisi sejak mission pertama selesai</span>
                           )}

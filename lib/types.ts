@@ -163,9 +163,26 @@ export type LkpdBlockTipe =
   | "animasi"
   | "berkas"
   | "pertanyaan"
+  | "essay"
   | "aktivitas"
   | "petunjuk"
   | "refleksi";
+
+/**
+ * Taksonomi Bloom revisi — dipakai menandai level berpikir tiap blok/soal LKPD
+ * (C1 Mengingat … C6 Mencipta) supaya penyusunan aktivitas berbasis proses
+ * berpikir, bukan sekadar soal pilihan ganda.
+ */
+export type LkpdBloom = "C1" | "C2" | "C3" | "C4" | "C5" | "C6";
+
+export const BLOOM_LABEL: Record<LkpdBloom, string> = {
+  C1: "C1 · Mengingat",
+  C2: "C2 · Memahami",
+  C3: "C3 · Menerapkan",
+  C4: "C4 · Menganalisis",
+  C5: "C5 · Mengevaluasi",
+  C6: "C6 · Mencipta",
+};
 
 export interface LkpdOpsi {
   teks: string;
@@ -221,6 +238,10 @@ export interface LkpdBlock {
   namaBerkas?: string;
   pertanyaan?: LkpdPertanyaan;
   aktivitas?: LkpdAktivitas;
+  /** Level Taksonomi Bloom revisi untuk blok ini (opsional, tampil sebagai penanda). */
+  bloom?: LkpdBloom;
+  /** Rubrik penilaian untuk blok terbuka (essay/refleksi) — panduan guru menilai. */
+  rubrik?: string;
 }
 
 export interface LkpdMission {
@@ -247,6 +268,11 @@ export interface LkpdTopic {
   ikon: string;
   /** URL thumbnail opsional. */
   thumbnail?: string;
+  /**
+   * Kunci/pembahasan boleh tampil ke siswa HANYA bila guru/admin mengaktifkan ini
+   * (default mati: siswa tidak langsung melihat jawaban benar).
+   */
+  kunciTerbuka?: boolean;
   subtopics: LkpdSubtopic[];
 }
 
@@ -256,11 +282,26 @@ export interface LkpdProgress {
   subtopicId: string;
   /** Id mission yang sudah ditandai selesai. */
   missions: string[];
-  /** Jawaban per blockId (refleksi = teks; aktivitas/pertanyaan = JSON) — bertahan saat siswa bolak-balik. */
+  /** Jawaban per blockId (refleksi/essay = teks; aktivitas/pertanyaan = JSON) — bertahan saat siswa bolak-balik. */
   jawaban: Record<string, string>;
-  /** Nilai hasil pengerjaan (0–100) — terisi saat seluruh mission selesai. */
+  /** Foto jawaban per kunci (missionId) — jawaban tulisan tangan/proses pengerjaan siswa. */
+  lampiran?: Record<string, MaterialAttachment[]>;
+  /** Nilai hasil pengerjaan (0–100) — dihitung dari benar/salah jawaban terukur. */
   nilai?: number;
-  /** Tandai verifikasi guru/admin atas nilai LKPD. */
+  /** Nilai buatan guru (hasil pemeriksaan) — menang atas nilai hitungan sistem. */
+  nilaiGuru?: number;
+  /**
+   * Sudah disubmit/difinalisasi siswa → LKPD terkunci: tidak bisa dikerjakan ulang
+   * dan jawaban tidak bisa diubah lagi. Data pengerjaan pertama tetap tersimpan.
+   */
+  dikumpulkan?: boolean;
+  /** Komentar/feedback guru atas hasil pemeriksaan — dilihat siswa. */
+  feedbackGuru?: string;
+  /** Waktu guru menyelesaikan pemeriksaan (kosong bila belum). */
+  diperiksaPada?: string;
+  /** Ada jawaban terbuka (essay/refleksi) yang belum bisa dinilai otomatis → menunggu guru. */
+  menungguPemeriksaan?: boolean;
+  /** Tandai verifikasi guru/admin atas nilai LKPD (= sudah diperiksa). */
   verifikasi?: boolean;
   updatedAt: string;
 }

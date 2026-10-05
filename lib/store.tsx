@@ -9,6 +9,7 @@ import type {
   LkpdProgress,
   LkpdTopic,
   Material,
+  MaterialAttachment,
   Notification,
   Presence,
   Submission,
@@ -16,6 +17,7 @@ import type {
 } from "./types";
 import { AUTH_USERS, SEED_ANNOUNCEMENTS, SEED_ASSIGNMENTS, SEED_EVENTS, SEED_MATERIALS } from "./seed";
 import { SEED_LKPD_TOPICS } from "./lkpd-seed";
+import { nilaiKerja } from "./lkpd";
 import { nowIso, uid } from "./utils";
 
 /** Rekaman akun lengkap (password disimpan agar login bisa diverifikasi di client). */
@@ -65,7 +67,18 @@ interface Store {
   deleteLkpdTopic: (id: string) => void;
   tandaiMissionLkpd: (subtopicId: string, missionId: string) => void;
   simpanJawabanLkpd: (subtopicId: string, blockId: string, teks: string) => void;
-  /** Guru/admin menetapkan nilai LKPD: set/clear verifikasi (nilai dihitung dari penyelesaian mission). */
+  /** Simpan foto jawaban LKPD per kunci (missionId). Ditolak bila LKPD sudah dikumpulkan. */
+  simpanLampiranLkpd: (subtopicId: string, kunci: string, files: MaterialAttachment[]) => void;
+  /**
+   * Hasil pemeriksaan guru: simpan feedback, nilai (manual), dan status periksa.
+   * `nilai: null` mengembalikan penilaian ke hitungan sistem.
+   */
+  periksaLkpd: (
+    siswaId: string,
+    subtopicId: string,
+    patch: { feedback?: string; nilai?: number | null; verifikasi?: boolean },
+  ) => void;
+  /** Guru/admin menetapkan status verifikasi LKPD (nilai dihitung dari benar/salah jawaban). */
   verifikasiLkpd: (siswaId: string, subtopicId: string, verifikasi: boolean) => void;
   /** Verifikasi massal (daftar siswa × sub-bab) — satu tulisan progres + satu notifikasi gabungan. */
   verifikasiLkpdBatch: (daftar: { siswaId: string; subtopicId: string }[], verifikasi: boolean) => void;
@@ -528,18 +541,25 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           const idx = p.findIndex((x) => x.siswaId === sid && x.subtopicId === subtopicId);
           const base: LkpdProgress = idx >= 0 ? p[idx] : { siswaId: sid, subtopicId, missions: [], jawaban: {}, updatedAt: nowIso() };
           if (base.missions.includes(missionId)) return p;
+          if (base.dikumpulkan) return p; // sekali kerja: tak ada misi baru setelah finalisasi
           const missions = [...base.missions, missionId];
           const updated: LkpdProgress = { ...base, missions, updatedAt: nowIso() };
-          // Nilai sub-bab dihitung SEJAK mission pertama (tanpa menunggu seluruh materi selesai):
-          // persentase mission selesai → 0–100. Bila nilainya berubah, verifikasi guru ikut di-reset.
           const sub = lkpdTopics.flatMap((t) => t.subtopics).find((s) => s.id === subtopicId);
-          if (sub && sub.missions.length > 0) {
-            const selesai = missions.filter((id) => sub.missions.some((m) => m.id === id)).length;
-            const baru = Math.round((selesai / sub.missions.length) * 100);
-            if (baru !== (base.nilai ?? -1)) {
-              updated.nilai = baru;
-              updated.verifikasi = false;
-            }
+          // Nilai SEJAK mission pertama, tetapi dihitung dari BENAR/SALAH jawaban
+          // terukur — bukan persentase mission ditandai (bug: jawaban salah = nilai 100).
+          const hasil = nilaiKerja(sub, updated);
+          if (hasil.nilai != null) {
+            if (hasil.nilai !== (base.nilai ?? -1)) updated.verifikasi = false;
+            updated.nilai = hasil.nilai;
+          } else {
+            delete updated.nilai;
+          }
+          // Ada jawaban terbuka (essay/refleksi) → nilai akhir menunggu guru.
+          updated.menungguPemeriksaan = hasil.nilai == null || hasil.terbuka > 0;
+          const total = sub?.missions.length || 0;
+          if (total > 0 && missions.length >= total) {
+            // Mission terakhir → finalisasi: LKPD dikumpulkan, terkunci, tak bisa dikerjakan ulang.
+            updated.dikumpulkan = true;
           }
           const next = idx >= 0 ? p.map((x, i) => (i === idx ? updated : x)) : [updated, ...p];
           void persistShared("lkpdProgress", next, effective?.role);
@@ -552,6 +572,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         setLkpdProgress((p) => {
           const idx = p.findIndex((x) => x.siswaId === sid && x.subtopicId === subtopicId);
           const base: LkpdProgress = idx >= 0 ? p[idx] : { siswaId: sid, subtopicId, missions: [], jawaban: {}, updatedAt: nowIso() };
+          // Setelah dikumpulkan jawaban dikunci — data pengerjaan pertama tetap tersimpan.
+          if (base.dikumpulkan) return p;
           if (base.jawaban[blockId] === teks) return p;
           const updated: LkpdProgress = { ...base, jawaban: { ...base.jawaban, [blockId]: teks }, updatedAt: nowIso() };
           const next = idx >= 0 ? p.map((x, i) => (i === idx ? updated : x)) : [updated, ...p];
@@ -559,14 +581,74 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           return next;
         });
       },
+      simpanLampiranLkpd: (subtopicId, kunci, files) => {
+        const sid = effective?.id;
+        if (!sid) return;
+        setLkpdProgress((p) => {
+          const idx = p.findIndex((x) => x.siswaId === sid && x.subtopicId === subtopicId);
+          const base: LkpdProgress = idx >= 0 ? p[idx] : { siswaId: sid, subtopicId, missions: [], jawaban: {}, updatedAt: nowIso() };
+          if (base.dikumpulkan) return p;
+          const lampiran = { ...(base.lampiran || {}) };
+          if (files.length) lampiran[kunci] = files;
+          else delete lampiran[kunci];
+          const updated: LkpdProgress = { ...base, lampiran, updatedAt: nowIso() };
+          const next = idx >= 0 ? p.map((x, i) => (i === idx ? updated : x)) : [updated, ...p];
+          void persistShared("lkpdProgress", next, effective?.role);
+          return next;
+        });
+      },
+      periksaLkpd: (siswaId, subtopicId, patch) => {
+        const role = effective?.role;
+        if (role !== "guru" && role !== "admin") return;
+        setLkpdProgress((p) => {
+          const next = p.map((x) => {
+            if (x.siswaId !== siswaId || x.subtopicId !== subtopicId) return x;
+            const updated: LkpdProgress = { ...x, updatedAt: nowIso() };
+            if (patch.feedback !== undefined) updated.feedbackGuru = patch.feedback;
+            if (patch.nilai !== undefined) {
+              if (patch.nilai === null) delete updated.nilaiGuru;
+              else updated.nilaiGuru = patch.nilai;
+            }
+            if (patch.verifikasi !== undefined) {
+              updated.verifikasi = patch.verifikasi;
+              updated.diperiksaPada = patch.verifikasi ? nowIso() : "";
+            }
+            return updated;
+          });
+          void persistShared("lkpdProgress", next, role);
+          return next;
+        });
+        // Notifikasi ke siswa: LKPD sudah diperiksa (feedback + nilai tersimpan).
+        if (patch.verifikasi === true) {
+          const sub = lkpdTopics.flatMap((t) => t.subtopics).find((s) => s.id === subtopicId);
+          const lama = lkpdProgress.find((x) => x.siswaId === siswaId && x.subtopicId === subtopicId);
+          const nilai = patch.nilai !== undefined ? patch.nilai : (lama?.nilaiGuru ?? lama?.nilai ?? null);
+          setNotifications((prev) => {
+            const next = [
+              {
+                id: uid("n"),
+                userId: siswaId,
+                kategori: "nilai",
+                judul: "LKPD sudah diperiksa guru",
+                isi: `${sub?.judul || "LKPD"}: status "Sudah diperiksa" · nilai ${nilai ?? "—"}${patch.feedback ? ` · feedback: ${patch.feedback.slice(0, 90)}` : ""}. Lihat pada menu Nilai.`,
+                dibaca: false,
+                createdAt: nowIso(),
+              },
+              ...prev,
+            ].slice(0, 200);
+            void persistShared("notifications", next, effective?.role);
+            return next;
+          });
+        }
+      },
       verifikasiLkpd: (siswaId, subtopicId, verifikasi) => {
         const role = effective?.role;
         if (role !== "guru" && role !== "admin") return;
         setLkpdProgress((p) => {
           const next = p.map((x) => {
             if (x.siswaId !== siswaId || x.subtopicId !== subtopicId) return x;
-            if (x.nilai == null) return x;
-            return { ...x, verifikasi, updatedAt: nowIso() };
+            if (x.nilai == null && x.nilaiGuru == null) return x;
+            return { ...x, verifikasi, diperiksaPada: verifikasi ? nowIso() : "", updatedAt: nowIso() };
           });
           void persistShared("lkpdProgress", next, role);
           return next;
@@ -581,8 +663,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
                 id: uid("n"),
                 userId: siswaId,
                 kategori: "nilai",
-                judul: "Nilai LKPD telah diverifikasi",
-                isi: `${sub?.judul || "LKPD"}: nilai ${nilai ?? "—"} — sudah fiks. Lihat pada menu Nilai.`,
+                judul: "LKPD sudah diperiksa guru",
+                isi: `${sub?.judul || "LKPD"}: status "Sudah diperiksa" · nilai ${nilai ?? "—"}. Lihat pada menu Nilai.`,
                 dibaca: false,
                 createdAt: nowIso(),
               },
@@ -600,8 +682,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         // Satu tulisan progres untuk seluruh daftar (bukan N tulisan).
         setLkpdProgress((p) => {
           const next = p.map((x) =>
-            kunci.has(`${x.siswaId}:${x.subtopicId}`) && x.nilai != null
-              ? { ...x, verifikasi, updatedAt: nowIso() }
+            kunci.has(`${x.siswaId}:${x.subtopicId}`) && (x.nilai != null || x.nilaiGuru != null)
+              ? { ...x, verifikasi, diperiksaPada: verifikasi ? nowIso() : "", updatedAt: nowIso() }
               : x,
           );
           void persistShared("lkpdProgress", next, role);
@@ -618,8 +700,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
             id: uid("n"),
             userId: d.siswaId,
             kategori: "nilai",
-            judul: "Nilai LKPD telah diverifikasi",
-            isi: `${judul.get(d.subtopicId) || "LKPD"}: nilai ${nilai.get(`${d.siswaId}:${d.subtopicId}`) ?? "—"} — sudah fiks. Lihat pada menu Nilai.`,
+            judul: "LKPD sudah diperiksa guru",
+            isi: `${judul.get(d.subtopicId) || "LKPD"}: status "Sudah diperiksa" · nilai ${nilai.get(`${d.siswaId}:${d.subtopicId}`) ?? "—"}. Lihat pada menu Nilai.`,
             dibaca: false,
             createdAt: nowIso(),
           }));

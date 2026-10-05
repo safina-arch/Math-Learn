@@ -59,7 +59,7 @@ export function QuestionImageUpload({
               <a href={file.url} target="_blank" rel="noreferrer" title={file.name}>
                 <img src={file.url} alt={file.name || label} className="h-16 w-16 rounded-md border border-line object-cover bg-white" />
               </a>
-              <button type="button" aria-label={`Hapus ${file.name || "foto"}`} onClick={() => onChange(attachments.filter((_, i) => i !== index))} className="absolute -right-1.5 -top-1.5 hidden group-hover:flex h-5 w-5 items-center justify-center rounded-full bg-red-600 text-white text-[12px] leading-none shadow-sm sm:flex">×</button>
+              <button type="button" aria-label={`Hapus ${file.name || "foto"}`} onClick={() => onChange(attachments.filter((_, i) => i !== index))} className="absolute -right-1.5 -top-1.5 flex sm:hidden sm:group-hover:flex h-5 w-5 items-center justify-center rounded-full bg-red-600 text-white text-[12px] leading-none shadow-sm">×</button>
             </div>
           ))}
         </div>

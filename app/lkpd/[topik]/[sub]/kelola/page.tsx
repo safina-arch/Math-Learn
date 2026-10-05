@@ -12,12 +12,19 @@ import { missionBaru } from "@/lib/lkpd";
 import type { LkpdBlock, LkpdBlockTipe, LkpdMission, LkpdTopic } from "@/lib/types";
 import { uid } from "@/lib/utils";
 
-const JENIS_BLOK: LkpdBlockTipe[] = ["teks", "gambar", "video", "animasi", "berkas", "pertanyaan", "aktivitas", "petunjuk", "refleksi"];
+const JENIS_BLOK: LkpdBlockTipe[] = ["teks", "gambar", "video", "animasi", "berkas", "pertanyaan", "essay", "aktivitas", "petunjuk", "refleksi"];
 
 function blokBaru(tipe: LkpdBlockTipe): LkpdBlock {
   const b: LkpdBlock = { id: uid("b"), tipe };
   if (tipe === "pertanyaan") b.pertanyaan = { teks: "", opsi: [{ teks: "", benar: true, feedback: "" }, { teks: "", benar: false, feedback: "" }], petunjuk: [] };
   if (tipe === "aktivitas") b.aktivitas = { tipe: "seret-slot", instruksi: "", area: "Area", kartu: [], temuan: "" };
+  if (tipe === "essay") {
+    // Default HOTS: ajak siswa menjelaskan proses berpikir, bukan sekadar jawaban singkat.
+    b.judul = "Pertanyaan essay";
+    b.teks = "";
+    b.bloom = "C4";
+    b.rubrik = "";
+  }
   return b;
 }
 
@@ -116,7 +123,16 @@ export default function KelolaLkpdPage() {
 
           <div className="mt-3 mb-4 flex flex-wrap items-center gap-2">
             <h1 className="h2">🛠️ Kelola LKPD — {sub.judul}</h1>
-            <div className="ml-auto flex flex-wrap gap-2">
+            <label className="flex items-center gap-1.5 text-[12.5px] text-ink-muted ml-auto" title="Kunci & pembahasan hanya tampil ke siswa setelah LKPD dikumpulkan — dan hanya bila opsi ini aktif">
+              <input
+                type="checkbox"
+                className="accent-[#7209B7]"
+                checked={Boolean(draft.kunciTerbuka)}
+                onChange={(e) => setDraft((d) => (d ? { ...d, kunciTerbuka: e.target.checked } : d))}
+              />
+              Tampilkan kunci/pembahasan ke siswa setelah dikumpulkan
+            </label>
+            <div className="flex flex-wrap gap-2">
               <button className={`btn !text-[13px] ${preview ? "bg-ink text-white border border-ink" : "btn-ghost"}`} onClick={() => setPreview((v) => !v)}>
                 {preview ? "Kembali ke editor" : "👁 Preview"}
               </button>

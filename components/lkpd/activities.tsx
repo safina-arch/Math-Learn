@@ -2,15 +2,7 @@
 
 import { useState } from "react";
 import type { LkpdAktivitas } from "@/lib/types";
-
-/** Angka dibandingkan longgar: "Rp10.000" / "10.000" / "10000" dianggap sama. */
-function sama(a: string, kunci: string): boolean {
-  const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
-  if (norm(a) === norm(kunci)) return true;
-  const na = a.replace(/[^0-9]/g, "");
-  const nk = kunci.replace(/[^0-9]/g, "");
-  return na !== "" && nk !== "" && Number(na) === Number(nk);
-}
+import { selSama } from "@/lib/lkpd";
 
 /** State tersimpan per aktivitas — di-restore saat siswa kembali ke mission. */
 type NilaiAktivitas = { diArea?: string[]; pasang?: Record<string, string>; val?: Record<string, string>; dicek?: boolean } | null;
@@ -238,8 +230,8 @@ function IsiTabel({ a, awal, simpan }: { a: LkpdAktivitas; awal: NilaiAktivitas;
                   const key = `${ri}-${ci}`;
                   if (s.teks !== undefined) return <td key={ci} className="px-3 py-2 text-ink-soft">{s.teks}</td>;
                   const v = val[key] || "";
-                  const benar = dicek && v.trim() !== "" && sama(v, s.kunci || "");
-                  const salah = dicek && (!v.trim() || !sama(v, s.kunci || ""));
+                  const benar = dicek && selSama(v, s.kunci);
+                  const salah = dicek && !selSama(v, s.kunci);
                   return (
                     <td key={ci} className="px-3 py-2 align-top">
                       <input

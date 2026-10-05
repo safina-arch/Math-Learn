@@ -86,6 +86,27 @@ body {
   background: #edd9f7;
 }
 
+/* HP portrait — guardrail agar halaman tidak bisa digeser ke samping
+   (overflow tak sengaja dari tabel/teks/gambar), tetap mengizinkan
+   scroll horizontal di dalam wadah `overflow-x-auto`. */
+@media (max-width: 640px) {
+  body {
+    overflow-x: clip;
+  }
+
+  /* Cegah Safari iOS auto-zoom saat kolom teks difokuskan (font-size min 16px). */
+  input:not([type="radio"]):not([type="checkbox"]),
+  textarea,
+  select {
+    font-size: 16px;
+  }
+
+  /* Ruang sentuh lebih lega untuk tombol kecil di layar sentuh. */
+  .btn {
+    min-height: 38px;
+  }
+}
+
 /* thin scrollbars like Notion */
 *::-webkit-scrollbar {
   width: 8px;

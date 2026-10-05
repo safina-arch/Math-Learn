@@ -1,8 +1,9 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Badge, Modal } from "@/components/ui";
 import { useStore } from "@/lib/store";
-import { cariProgress, nilaiSubtopic, progresSubtopic } from "@/lib/lkpd";
+import { cariProgress, nilaiSubtopic, progresSubtopic, selSama } from "@/lib/lkpd";
 import { fmtDateTime } from "@/lib/utils";
 import { BLOCK_LABEL } from "./blocks";
 import type { LkpdAktivitas, LkpdBlock } from "@/lib/types";
@@ -16,15 +17,6 @@ type StateAktivitas = {
   val?: Record<string, string>;
   dicek?: boolean;
 };
-
-/** Angka dibandingkan longgar (selaras `activities.tsx`) — dipakai untuk isi-tabel. */
-function sama(a: string, kunci: string): boolean {
-  const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
-  if (norm(a) === norm(kunci)) return true;
-  const na = a.replace(/[^0-9]/g, "");
-  const nk = kunci.replace(/[^0-9]/g, "");
-  return na !== "" && nk !== "" && Number(na) === Number(nk);
-}
 
 function parseState(teks?: string): StateAktivitas | null {
   if (!teks) return null;
@@ -40,14 +32,20 @@ function parseState(teks?: string): StateAktivitas | null {
 function BlokCek({ blok, jawaban }: { blok: LkpdBlock; jawaban?: string }) {
   switch (blok.tipe) {
     case "refleksi":
+    case "essay":
       return (
         <div className="rounded-lg border border-line px-3.5 py-2.5">
-          <p className="text-[12px] font-semibold uppercase tracking-wide text-ink-faint mb-1">💬 {blok.judul || "Refleksi"}</p>
+          <p className="text-[12px] font-semibold uppercase tracking-wide text-ink-faint mb-1">
+            {blok.tipe === "essay" ? "✍️" : "💬"} {blok.judul || (blok.tipe === "essay" ? "Essay" : "Refleksi")}
+            {blok.bloom ? <span className="ml-2 normal-case tracking-normal text-primary">{blok.bloom}</span> : null}
+          </p>
+          {blok.rubrik ? <p className="text-[12.5px] text-ink-muted mb-1.5">📌 Rubrik: {blok.rubrik}</p> : null}
           {jawaban ? (
             <p className="text-[13.5px] text-ink-soft whitespace-pre-wrap bg-wash border border-line rounded-lg px-3 py-2 leading-relaxed">{jawaban}</p>
           ) : (
             <p className="text-[13px] text-ink-faint italic">Belum dijawab</p>
           )}
+          <p className="text-[12px] text-ink-faint mt-1.5">Dinilai manual — tentukan nilainya di panel bawah.</p>
         </div>
       );
 
@@ -210,8 +208,8 @@ function IsiAktivitas({ a, st }: { a: LkpdAktivitas; st: StateAktivitas | null }
                     if (s.teks !== undefined) return <td key={ci} className="px-2 py-1.5 text-ink-soft">{s.teks}</td>;
                     const key = `${ri}-${ci}`;
                     const v = val[key] || "";
-                    const benar = dicek && v.trim() !== "" && sama(v, s.kunci || "");
-                    const salah = dicek && (!v.trim() || !sama(v, s.kunci || ""));
+                    const benar = dicek && selSama(v, s.kunci);
+                    const salah = dicek && !selSama(v, s.kunci);
                     return (
                       <td key={ci} className="px-2 py-1.5">
                         <span
@@ -239,12 +237,13 @@ function IsiAktivitas({ a, st }: { a: LkpdAktivitas; st: StateAktivitas | null }
 
 /**
  * Modal cek hasil pekerjaan siswa LKPD — dipanggil guru/admin dari tabel penilaian.
- * Menampilkan isi kerja per mission (refleksi, jawaban pertanyaan, hasil aktivitas)
- * lalu verifikasi/batalkan verifikasi di panel bawah — verifikasi tidak lagi sekali klik
+ * Alur pemeriksaan: (1) buka isi kerja per mission (refleksi/essay, jawaban pertanyaan,
+ * hasil aktivitas, foto) → (2) tulis feedback & nilai → (3) simpan hasil pemeriksaan
+ * yang sekaligus menandai LKPD "sudah diperiksa". Verifikasi tidak lagi sekali klik
  * dari tabel.
  */
 export function CekKerjaLkpd({ kunci, onClose }: { kunci: KunciCek | null; onClose: () => void }) {
-  const { lkpdTopics, lkpdProgress, users, verifikasiLkpd } = useStore();
+  const { lkpdTopics, lkpdProgress, users, periksaLkpd } = useStore();
 
   const topik = kunci ? lkpdTopics.find((t) => t.id === kunci.topikId) : undefined;
   const sub = topik?.subtopics.find((s) => s.id === kunci?.subtopicId);
@@ -253,6 +252,34 @@ export function CekKerjaLkpd({ kunci, onClose }: { kunci: KunciCek | null; onClo
   const ringkas = progresSubtopic(sub, progres);
   const nilai = nilaiSubtopic(sub, progres);
   const verifikasi = Boolean(progres?.verifikasi);
+
+  const [fb, setFb] = useState(progres?.feedbackGuru || "");
+  const [nilaiTeks, setNilaiTeks] = useState(progres?.nilaiGuru != null ? String(progres.nilaiGuru) : "");
+  // Isi ulang form saat baris yang dicek berganti.
+  useEffect(() => {
+    setFb(progres?.feedbackGuru || "");
+    setNilaiTeks(progres?.nilaiGuru != null ? String(progres.nilaiGuru) : "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kunci?.siswaId, kunci?.subtopicId]);
+
+  const fbKotor = fb.trim() !== (progres?.feedbackGuru || "").trim();
+  const nilaiKotor =
+    nilaiTeks.trim() === ""
+      ? progres?.nilaiGuru != null
+      : progres?.nilaiGuru == null || String(progres.nilaiGuru) !== nilaiTeks.trim();
+  const adaPerubahan = fbKotor || nilaiKotor;
+
+  const simpan = () => {
+    if (!kunci) return;
+    const n = nilaiTeks.trim();
+    periksaLkpd(kunci.siswaId, kunci.subtopicId, {
+      feedback: fb.trim(),
+      nilai: n === "" ? null : Math.max(0, Math.min(100, Math.round(Number(n) || 0))),
+      verifikasi: true,
+    });
+    setFb(fb.trim());
+    setNilaiTeks(n === "" ? "" : n);
+  };
 
   if (!kunci || !topik || !sub) return null;
 
@@ -266,13 +293,17 @@ export function CekKerjaLkpd({ kunci, onClose }: { kunci: KunciCek | null; onClo
           Nilai <b className="text-[16px] align-middle">{nilai ?? "—"}</b>
         </span>
         <span className="text-ink-muted">{ringkas.selesai}/{ringkas.total} mission · {ringkas.persen}%</span>
-        {nilai == null ? (
-          <Badge tone="gray">Belum dinilai</Badge>
-        ) : verifikasi ? (
-          <Badge tone="green">Terverifikasi ✓</Badge>
-        ) : (
-          <Badge tone="amber">Menunggu verifikasi</Badge>
-        )}
+        {progres?.dikumpulkan ? (
+          <Badge tone="blue">Sudah dikumpulkan 🔒</Badge>
+        ) : progres ? (
+          <Badge tone="gray">Sedang dikerjakan</Badge>
+        ) : null}
+        {verifikasi ? (
+          <Badge tone="green">Sudah diperiksa ✓</Badge>
+        ) : progres?.dikumpulkan ? (
+          <Badge tone="amber">Belum diperiksa</Badge>
+        ) : null}
+        {progres?.menungguPemeriksaan ? <Badge tone="amber">Ada essay menunggu nilai</Badge> : null}
         <span className="text-ink-muted ml-auto">Terakhir: {fmtDateTime(progres?.updatedAt || null)}</span>
       </div>
 
@@ -301,32 +332,83 @@ export function CekKerjaLkpd({ kunci, onClose }: { kunci: KunciCek | null; onClo
                 ) : (
                   m.blok.map((b) => <BlokCek key={b.id} blok={b} jawaban={progres?.jawaban[b.id]} />)
                 )}
+                {(progres?.lampiran?.[m.id]?.length || 0) > 0 ? (
+                  <div>
+                    <p className="text-[12px] font-semibold uppercase tracking-wide text-ink-faint mb-1.5">📷 Foto jawaban siswa</p>
+                    <div className="flex flex-wrap gap-2">
+                      {progres?.lampiran?.[m.id].map((f, i) => (
+                        <a key={`${f.url}-${i}`} href={f.url} target="_blank" rel="noreferrer" className="block">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={f.url}
+                            alt={f.name || "Foto jawaban"}
+                            className="h-24 w-24 rounded-lg border border-line object-cover bg-wash hover:opacity-90"
+                          />
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
               </div>
             </div>
           );
         })}
       </div>
 
-      {/* Keputusan pemeriksa — verifikasi hanya setelah isi kerja dibuka */}
-      <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-line pt-3">
-        <p className="text-[13px] text-ink-muted">
-          {nilai == null
-            ? "Belum ada nilai — mission belum ditandai selesai."
-            : verifikasi
-              ? "Nilai sudah fiks di siswa."
-              : "Nilai menunggu keputusanmu setelah isi kerja dicek."}
+      {/* Panel hasil pemeriksaan: feedback + nilai + simpan */}
+      <div className="mt-4 rounded-xl border border-line bg-wash/50 px-3.5 py-3 border-t-0">
+        <p className="text-[13.5px] font-semibold mb-2">📝 Hasil pemeriksaan</p>
+        <div className="flex flex-wrap items-start gap-3">
+          <div>
+            <label className="label" htmlFor="nilai-guru-lkpd">Nilai (0–100)</label>
+            <input
+              id="nilai-guru-lkpd"
+              type="number"
+              min={0}
+              max={100}
+              className="input !w-[96px]"
+              value={nilaiTeks}
+              onChange={(e) => setNilaiTeks(e.target.value)}
+              placeholder={nilai != null ? String(nilai) : "—"}
+            />
+          </div>
+          <div className="min-w-[220px] flex-1">
+            <label className="label" htmlFor="fb-guru-lkpd">Feedback untuk siswa</label>
+            <textarea
+              id="fb-guru-lkpd"
+              className="input min-h-[76px]"
+              value={fb}
+              onChange={(e) => setFb(e.target.value)}
+              placeholder="Tulis komentar: bagian yang sudah tepat, yang perlu diperbaiki, dan langkah berikutnya…"
+            />
+          </div>
+        </div>
+        <p className="text-[12.5px] text-ink-muted mt-2">
+          Kosongkan nilai bila ingin memakai nilai hitungan sistem <b>{nilai ?? "—"}</b>. Feedback tampil di siswa setelah disimpan;
+          menyimpan hasil pemeriksaan menandai LKPD <b>sudah diperiksa</b>.
         </p>
-        <div className="ml-auto flex flex-wrap gap-2">
-          <button className="btn-ghost !py-2 !text-[13px]" onClick={onClose}>Tutup</button>
-          {nilai == null || !kunci ? null : verifikasi ? (
-            <button className="btn-ghost !py-2 !text-[13px]" onClick={() => verifikasiLkpd(kunci.siswaId, kunci.subtopicId, false)}>
-              Batalkan verifikasi
+        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-line pt-3">
+          <p className="text-[13px] text-ink-muted">
+            {verifikasi
+              ? `Sudah diperiksa${progres?.diperiksaPada ? ` (${fmtDateTime(progres.diperiksaPada)})` : ""}${adaPerubahan ? " · ada perubahan belum disimpan" : ""}.`
+              : progres?.dikumpulkan
+                ? "Belum diperiksa — isi kerja di atas belum diberi keputusan."
+                : "Siswa masih mengerjakan — keputusan bisa disimpan nanti."}
+          </p>
+          <div className="ml-auto flex flex-wrap gap-2">
+            <button className="btn-ghost !py-2 !text-[13px]" onClick={onClose}>Tutup</button>
+            {verifikasi ? (
+              <button
+                className="btn-ghost !py-2 !text-[13px]"
+                onClick={() => kunci && periksaLkpd(kunci.siswaId, kunci.subtopicId, { verifikasi: false })}
+              >
+                Batalkan pemeriksaan
+              </button>
+            ) : null}
+            <button className="btn-primary !py-2 !text-[13px]" onClick={simpan} disabled={!progres}>
+              💾 Simpan hasil pemeriksaan {verifikasi ? "(perbarui)" : "& tandai sudah diperiksa"}
             </button>
-          ) : (
-            <button className="btn-primary !py-2 !text-[13px]" onClick={() => verifikasiLkpd(kunci.siswaId, kunci.subtopicId, true)}>
-              ✓ Verifikasi nilai
-            </button>
-          )}
+          </div>
         </div>
       </div>
     </Modal>

@@ -6,7 +6,7 @@ import { useEffect } from "react";
 import { AppShell } from "@/components/shell";
 import { Badge, PageHeader, Progress, Stat } from "@/components/ui";
 import { useStore } from "@/lib/store";
-import { fmtDateTime, jendelaEvaluasi, STATUS_TUGAS_META, todayIso } from "@/lib/utils";
+import { fmtDateTime, jendelaEvaluasi, STATUS_TUGAS_META, statusTugas, todayIso } from "@/lib/utils";
 
 function SiswaDash() {
   const { user, assignments, submissions, announcements, materials, events } = useStore();
@@ -14,7 +14,7 @@ function SiswaDash() {
   const doneIds = new Set(mine.map((s) => s.assignmentId));
   // Evaluasi yang dikunci manual atau sudah lewat jadwal tutup tidak dihitung tugas mendatang.
   const upcoming = assignments.filter((a) => !doneIds.has(a.id) && !(a.tipe === "evaluasi" && (a.terkunci || jendelaEvaluasi(a) === "lewat-waktu"))).slice(0, 4);
-  const graded = mine.filter((s) => s.status === "dinilai" && s.nilai != null).sort((a, b) => b.submittedAt.localeCompare(a.submittedAt));
+  const graded = mine.filter((s) => statusTugas(s) === "sudah" && s.nilai != null).sort((a, b) => b.submittedAt.localeCompare(a.submittedAt));
   const last = graded[0] || null;
   const lastAssign = last ? assignments.find((a) => a.id === last.assignmentId) : null;
   const progress = assignments.length ? Math.round((doneIds.size / assignments.length) * 100) : 0;
@@ -132,7 +132,7 @@ function SiswaDash() {
 
 function GuruDash() {
   const { user, submissions, assignments, announcements, events, materials } = useStore();
-  const pending = submissions.filter((s) => s.status !== "dinilai");
+  const pending = submissions.filter((s) => statusTugas(s) !== "sudah");
   const activeEval = assignments.filter((a) => a.tipe === "evaluasi");
   // Jadwal hari ini — pertemuan tanggal sama hari ini; data lama (mingguan) cocok nama hari.
   const hariIni = todayIso();

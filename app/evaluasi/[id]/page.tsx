@@ -10,10 +10,12 @@ import { useStore } from "@/lib/store";
 import { fmtCountdown, heuristicGrade, jendelaEvaluasi, nowIso, pgCorrect, uid } from "@/lib/utils";
 
 export default function ExamPage() {
+  const { id } = useParams() as { id: string };
   return (
     <AppShell>
       <Guard allow={["siswa"]}>
-        <Exam />
+        {/* key = id: pindah ke evaluasi lain me-reset seluruh state pengerjaan */}
+        <Exam key={id} />
       </Guard>
     </AppShell>
   );
@@ -59,6 +61,21 @@ function Exam() {
   /** Saat dialog file terbuka browser kehilangan fokus; jangan dicatat sebagai pelanggaran. */
   const photoGrace = useRef(0);
   const doneRef = useRef(false);
+  /** Refresh / tutup tab menandai halaman akan bongkar — itu bukan pelanggaran. */
+  const meninggalkanHalaman = useRef(false);
+  /** Ref agar identitas fungsi store tidak ikut dalam dependensi efek (mencegah log ganda). */
+  const cheatLogRef = useRef(addCheatLog);
+  cheatLogRef.current = addCheatLog;
+
+  useEffect(() => {
+    const tandai = () => { meninggalkanHalaman.current = true; };
+    window.addEventListener("pagehide", tandai);
+    window.addEventListener("beforeunload", tandai);
+    return () => {
+      window.removeEventListener("pagehide", tandai);
+      window.removeEventListener("beforeunload", tandai);
+    };
+  }, []);
 
   const ordered = useMemo(() => {
     if (!a) return [];
@@ -76,17 +93,20 @@ function Exam() {
     if (!a || !user || doneRef.current || busy) return;
     doneRef.current = true;
     setBusy(true);
-    try { if (examKey) localStorage.removeItem(examKey); } catch {}
     try {
-      let total = 0;
+      let totalBobot = 0;
+      let pgScore = 0;
       const feedbackAi: Record<string, { skor: number; feedback: string; draft: boolean }> = {};
       for (const q of a.questions) {
+        totalBobot += q.bobot;
         const ans = answers[q.id] || "";
         if (q.tipe === "pg") {
           const ok = pgCorrect(ans, q.kunci);
-          if (ok) total += q.bobot;
-          feedbackAi[q.id] = { skor: ok ? 100 : 0, feedback: ok ? "Jawaban tepat." : `Kunci: ${q.kunci}.`, draft: false };
+          if (ok) pgScore += q.bobot;
+          // Kunci TIDAK ditampilkan ke siswa — guru melihatnya di menu Periksa.
+          feedbackAi[q.id] = { skor: ok ? 100 : 0, feedback: ok ? "Jawaban tepat." : "Belum tepat — jawaban disimpan, menunggu pemeriksaan guru.", draft: false };
         } else {
+          // Uraian/essay tidak dianggap benar oleh sistem — hanya saran draf untuk guru.
           let g = heuristicGrade(q.teks, ans, q.kunci, q.rubrik, q.bobot);
           try {
             const r = await fetch("/api/ai/grade", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ teks: q.teks, jawaban: ans, kunci: q.kunci, rubrik: q.rubrik }) });
@@ -96,16 +116,16 @@ function Exam() {
             }
           } catch {}
           feedbackAi[q.id] = { ...g, draft: true };
-          total += Math.round((g.skor / 100) * q.bobot);
         }
       }
-      total = Math.min(100, Math.max(0, Math.round(total)));
+      // Skor sementara = bobot pilihan ganda yang benar / total bobot (uraian menunggu guru).
+      const total = totalBobot > 0 ? Math.min(100, Math.max(0, Math.round((pgScore / totalBobot) * 100))) : 0;
       addSubmission({
         id: uid("s"), assignmentId: a.id, siswaId: user.id, siswaNama: user.nama, kelas: user.kelas,
         jawaban: answers, jawabanLampiran: Object.keys(answerAttachments).length ? answerAttachments : undefined, nilai: null, feedbackAi, feedbackGuru: "", status: "draf-ai",
         submittedAt: nowIso(), cheatCount: cheatRef.current,
       });
-      addNotification({ userId: "all-guru", kategori: "evaluasi", judul: `${user.nama} menyelesaikan ${a.judul}`, isi: `Skor sementara ${total}${cheatRef.current ? ` · ${cheatRef.current}x pindah tab` : ""}.` });
+      addNotification({ userId: "all-guru", kategori: "evaluasi", judul: `${user.nama} menyelesaikan ${a.judul}`, isi: `Skor sementara ${total}${cheatRef.current ? ` · ${cheatRef.current}x pindah tab` : ""}. Uraian/essay menunggu pemeriksaan.` });
       if (photoRef.current > 0) {
         addNotification({ userId: "all-guru", kategori: "lampiran", judul: `${user.nama} menambahkan foto jawaban`, isi: `${photoRef.current} foto ditambahkan pada ${a.judul} (bukan pelanggaran).` });
       }
@@ -113,22 +133,27 @@ function Exam() {
         addNotification({ userId: "all-guru", kategori: "kecurangan", judul: `Laporan kecurangan: ${user.nama}`, isi: `${cheatRef.current} pelanggaran pindah tab pada ${a.judul}.` });
       }
       setDone(true);
+      // Draf pengerjaan dihapus HANYA setelah kiriman benar-benar tersimpan.
+      try { if (examKey) localStorage.removeItem(examKey); } catch {}
     } finally {
       setBusy(false);
     }
-  }, [a, answers, user, busy, addSubmission, addNotification, addCheatLog]);
+  }, [a, answers, answerAttachments, user, busy, examKey, addSubmission, addNotification]);
 
-  // Resume timer: refresh/hilang fokus tidak me-reset waktu ujian.
+  // Resume timer + jawaban: refresh/hilang fokus tidak me-reset waktu ujian
+  // dan jawaban yang sudah diketik tetap ada.
   useEffect(() => {
     if (!examKey || already || started) return;
     try {
       const raw = localStorage.getItem(examKey);
       if (!raw) return;
-      const s = JSON.parse(raw) as { startAt: number; endAt: number };
+      const s = JSON.parse(raw) as { startAt: number; endAt: number; answers?: Record<string, string>; attachments?: Record<string, import("@/lib/types").MaterialAttachment[]> };
       const leftSec = Math.round((s.endAt - Date.now()) / 1000);
       if (leftSec > 0) {
         startedAt.current = s.startAt;
         setLeft(leftSec);
+        if (s.answers && Object.keys(s.answers).length) setAnswers(s.answers);
+        if (s.attachments && Object.keys(s.attachments).length) setAnswerAttachments(s.attachments);
         setStarted(true);
       } else {
         localStorage.removeItem(examKey);
@@ -136,6 +161,20 @@ function Exam() {
     } catch {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [examKey, already]);
+
+  // Simpan jawaban otomatis saat diketik (dibatalkan bila sudah selesai) —
+  // refresh halaman, pindah tab, atau browser tertutup tidak menghapus jawaban.
+  useEffect(() => {
+    if (!examKey || !started || done !== null) return;
+    const t = setTimeout(() => {
+      try {
+        const raw = localStorage.getItem(examKey);
+        const base = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+        localStorage.setItem(examKey, JSON.stringify({ ...base, startAt: base.startAt || Date.now(), endAt: base.endAt || Date.now(), answers, attachments: answerAttachments }));
+      } catch {}
+    }, 350);
+    return () => clearTimeout(t);
+  }, [examKey, started, done, answers, answerAttachments]);
 
   useEffect(() => {
     if (!started || done !== null) return;
@@ -161,11 +200,12 @@ function Exam() {
       // Mengunggah foto membuka dialog file — bukan pelanggaran.
       if (now < photoGrace.current) return;
       // Browser biasanya memicu blur dan visibilitychange untuk satu perpindahan tab.
-      if (now - lastCheatAt.current < 1000) return;
+      // Jeda 3 detik dipakai agar satu kejadian hanya dihitung satu kali.
+      if (now - lastCheatAt.current < 3000) return;
       lastCheatAt.current = now;
       cheatRef.current += 1;
       const menit = Math.max(1, Math.round((now - (startedAt.current || now)) / 60000));
-      addCheatLog({ evaluationId, siswaId: user.id, siswaNama: user.nama, tipe, soal: activeQuestion, menit });
+      cheatLogRef.current({ evaluationId, siswaId: user.id, siswaNama: user.nama, tipe, soal: activeQuestion, menit });
       void fetch("/api/cheat-log", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ evaluationId, siswaId: user.id, siswaNama: user.nama, tipe, count: cheatRef.current, soal: activeQuestion, menit }) });
       setWarn({ count: cheatRef.current });
     }
@@ -177,28 +217,34 @@ function Exam() {
       document.removeEventListener("visibilitychange", onHide);
       window.removeEventListener("blur", onBlur);
     };
-  }, [started, a, done, addCheatLog, user, activeQuestion]);
+    // addCheatLog dibungkus ref agar identitas store tidak me-restart listener.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [started, a, done, user, activeQuestion]);
 
   // Pelanggaran juga dicatat saat siswa meninggalkan halaman evaluasi lewat menu
   // sidebar / navigasi internal, selama pengerjaan masih berjalan. Unmount komponen
-  // = perpindahan halaman; ref dipakai agar submit sukses tidak ikut terhitung.
+  // = perpindahan halaman. Refresh/tutup tab TIDAK dihitung (pagehide), dan dependensi
+  // dibuat stabil agar perubahan identitas fungsi store tidak membuat log ganda.
   const navGuardId = a?.id ?? id;
+  const navSiswaId = user?.id || "";
+  const navSiswaNama = user?.nama || "";
   useEffect(() => {
-    if (!started || !user || done !== null) return;
+    if (!started || !navSiswaId || done !== null) return;
     const evaluationId = navGuardId;
-    const siswaId = user.id;
-    const siswaNama = user.nama;
     return () => {
       if (doneRef.current || startedAt.current === 0) return;
+      if (meninggalkanHalaman.current) return; // refresh / tutup tab — bukan pelanggaran
       const now = Date.now();
       if (now < photoGrace.current) return;
+      if (now - lastCheatAt.current < 3000) return; // satu kejadian = satu hitungan
+      lastCheatAt.current = now;
       cheatRef.current += 1;
       const menit = Math.max(1, Math.round((now - (startedAt.current || now)) / 60000));
       const soal = activeQuestionRef.current;
-      addCheatLog({ evaluationId, siswaId, siswaNama, tipe: "navigasi", soal, menit });
-      void fetch("/api/cheat-log", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ evaluationId, siswaId, siswaNama, tipe: "navigasi", count: cheatRef.current, soal, menit }) });
+      cheatLogRef.current({ evaluationId, siswaId: navSiswaId, siswaNama: navSiswaNama, tipe: "navigasi", soal, menit });
+      void fetch("/api/cheat-log", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ evaluationId, siswaId: navSiswaId, siswaNama: navSiswaNama, tipe: "navigasi", count: cheatRef.current, soal, menit }) });
     };
-  }, [started, user, done, navGuardId, addCheatLog]);
+  }, [started, navSiswaId, navSiswaNama, done, navGuardId]);
 
   if (!a) return <div className="page-wrap !px-0"><p className="muted">Evaluasi tidak ditemukan.</p></div>;
 
@@ -379,8 +425,8 @@ function Exam() {
       <Modal open={done !== null} onClose={() => router.push("/nilai")} title="🎉 Ujian terkumpul">
         <p className="text-[18px] font-semibold text-center">Jawaban berhasil dikumpulkan.</p>
         <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-center">
-          <p className="text-[15px] font-semibold text-amber-900">⏳ Nilai sedang menunggu untuk diverifikasi oleh guru</p>
-          <p className="text-[13px] text-amber-800 mt-1">Status: <b>Menunggu verifikasi</b> — nilai berubah fiks setelah guru menyetujuinya{cheatRef.current ? ` · ${cheatRef.current} catatan perpindahan laman diteruskan ke guru` : ""}.</p>
+          <p className="text-[15px] font-semibold text-amber-900">⏳ Menunggu pemeriksaan guru</p>
+          <p className="text-[13px] text-amber-800 mt-1">Status: <b>Belum diperiksa</b> — nilai akhir &amp; feedback muncul setelah guru memeriksa{cheatRef.current ? ` · ${cheatRef.current} catatan perpindahan laman diteruskan ke guru` : ""}.</p>
         </div>
         <div className="mt-4 flex gap-2">
           <button className="btn-primary flex-1" onClick={() => router.push("/nilai")}>Lihat nilai & status</button>

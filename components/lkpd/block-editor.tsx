@@ -1,6 +1,7 @@
 "use client";
 
-import type { LkpdAktivitas, LkpdBlock, LkpdSel } from "@/lib/types";
+import type { LkpdAktivitas, LkpdBloom, LkpdBlock, LkpdSel } from "@/lib/types";
+import { BLOOM_LABEL } from "@/lib/types";
 import { uid } from "@/lib/utils";
 import { BLOCK_LABEL } from "./blocks";
 
@@ -28,6 +29,21 @@ export function BlockEditor({
     <div className="card !border-primary-200">
       <div className="flex items-center gap-2 px-4 py-2.5 border-b border-line bg-wash/50 rounded-t-xl2">
         <span className="text-[13px] font-semibold">{BLOCK_LABEL[blok.tipe]}</span>
+        {blok.tipe === "pertanyaan" || blok.tipe === "essay" || blok.tipe === "refleksi" || blok.tipe === "aktivitas" ? (
+          <label className="flex items-center gap-1.5 text-[12px] text-ink-muted">
+            <span className="hidden sm:inline">Taksonomi Bloom</span>
+            <select
+              className="input !w-auto !py-1 !text-[12.5px]"
+              value={blok.bloom || ""}
+              onChange={(e) => onChange({ bloom: (e.target.value || undefined) as LkpdBloom | undefined })}
+            >
+              <option value="">— pilih level —</option>
+              {(Object.keys(BLOOM_LABEL) as LkpdBloom[]).map((k) => (
+                <option key={k} value={k}>{BLOOM_LABEL[k]}</option>
+              ))}
+            </select>
+          </label>
+        ) : null}
         <div className="ml-auto flex gap-1">
           <button className="btn-ghost !px-2 !py-1 !text-[12px]" disabled={!canUp} onClick={onUp}>↑</button>
           <button className="btn-ghost !px-2 !py-1 !text-[12px]" disabled={!canDown} onClick={onDown}>↓</button>
@@ -36,18 +52,38 @@ export function BlockEditor({
       </div>
 
       <div className="p-4 space-y-3">
-        {(blok.tipe === "teks" || blok.tipe === "petunjuk" || blok.tipe === "refleksi") ? (
+        {(blok.tipe === "teks" || blok.tipe === "petunjuk" || blok.tipe === "refleksi" || blok.tipe === "essay") ? (
           <>
-            {blok.tipe === "teks" || blok.tipe === "petunjuk" ? (
-              <div>
-                <label className="label">Judul (opsional)</label>
-                <input className="input" value={blok.judul || ""} onChange={(e) => onChange({ judul: e.target.value })} />
-              </div>
-            ) : null}
             <div>
-              <label className="label">{blok.tipe === "petunjuk" ? "Isi petunjuk (satu baris = satu petunjuk, tampil progresif)" : blok.tipe === "refleksi" ? "Pertanyaan / instruksi refleksi" : "Teks"}</label>
+              <label className="label">Judul / label blok (opsional)</label>
+              <input className="input" value={blok.judul || ""} placeholder={blok.tipe === "essay" ? "mis. Analisis pola" : undefined} onChange={(e) => onChange({ judul: e.target.value })} />
+            </div>
+            <div>
+              <label className="label">
+                {blok.tipe === "petunjuk"
+                  ? "Isi petunjuk (satu baris = satu petunjuk, tampil progresif)"
+                  : blok.tipe === "refleksi"
+                    ? "Pertanyaan / instruksi refleksi"
+                    : blok.tipe === "essay"
+                      ? "Pertanyaan essay (terbuka — HOTS: alasan, strategi, kesimpulan)"
+                      : "Teks"}
+              </label>
               <textarea className="input min-h-[90px]" value={blok.teks || ""} onChange={(e) => onChange({ teks: e.target.value })} />
             </div>
+            {blok.tipe === "essay" || blok.tipe === "refleksi" ? (
+              <div>
+                <label className="label">Rubrik penilaian (panduan guru — opsional)</label>
+                <input
+                  className="input"
+                  value={blok.rubrik || ""}
+                  placeholder="mis. ketepatan langkah · kejelasan alasan · kesimpulan"
+                  onChange={(e) => onChange({ rubrik: e.target.value })}
+                />
+                <p className="text-[12px] text-ink-muted mt-1.5">
+                  Jawaban terbuka tidak dinilai otomatis — guru membukanya lewat <b>👁 Periksa</b> lalu mengisi feedback &amp; nilai.
+                </p>
+              </div>
+            ) : null}
           </>
         ) : null}
 

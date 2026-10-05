@@ -20,6 +20,12 @@ export type BarisHasilLkpd = {
   persen: number;
   nilai: number | null;
   verifikasi: boolean;
+  /** Sudah disubmit/difinalisasi siswa (terkunci, sekali kerja). */
+  dikumpulkan: boolean;
+  /** Feedback guru yang tersimpan (tampil juga ke siswa). */
+  feedbackGuru: string;
+  /** Ada foto jawaban siswa pada sub bab ini. */
+  adaFoto: boolean;
   updatedAt: string;
 };
 
@@ -49,9 +55,12 @@ export function barisHasil(
       submateri: sub.judul,
       progres: `${proyek.selesai}/${proyek.total} mission`,
       persen: proyek.persen,
-      // Nilai per sub-bab: sudah ada tersimpan ATAU persentase sementara (tak menunggu materi penuh).
+      // Nilai per sub-bab: hitungan benar/salah jawaban (bukan persentase penyelesaian).
       nilai: nilaiSubtopic(sub, pr),
       verifikasi: Boolean(pr?.verifikasi),
+      dikumpulkan: Boolean(pr?.dikumpulkan),
+      feedbackGuru: pr?.feedbackGuru || "",
+      adaFoto: Object.values(pr?.lampiran || {}).some((list) => list.length > 0),
       updatedAt: pr?.updatedAt || p.updatedAt,
     });
   }
@@ -59,9 +68,9 @@ export function barisHasil(
 }
 
 export function statusHasil(r: BarisHasilLkpd): { label: string; tone: "gray" | "amber" | "green" | "purple" } {
-  if (r.nilai == null) return { label: r.persen === 0 ? "Belum mulai" : "Sedang dikerjakan", tone: "gray" };
-  if (r.verifikasi) return { label: "Terverifikasi", tone: "green" };
-  return { label: "Menunggu verifikasi", tone: "amber" };
+  if (!r.dikumpulkan && r.nilai == null) return { label: r.persen === 0 ? "Belum mulai" : "Sedang dikerjakan", tone: "gray" };
+  if (r.verifikasi) return { label: "Sudah diperiksa", tone: "green" };
+  return { label: r.dikumpulkan ? "Belum diperiksa" : "Menunggu pemeriksaan", tone: "amber" };
 }
 
 /** Baris "belum mengerjakan" untuk daftar siswa ketika sub bab dipilih tertentu. */
@@ -86,6 +95,9 @@ function barisKosong(
     persen: 0,
     nilai: null,
     verifikasi: false,
+    dikumpulkan: false,
+    feedbackGuru: "",
+    adaFoto: false,
     updatedAt: "",
   };
 }
@@ -132,8 +144,9 @@ export function HasilLkpdGuru({ aksi = true }: { aksi?: boolean }) {
   const rata = nilaiTersedia.length
     ? Math.round(nilaiTersedia.reduce((n, r) => n + (r.nilai || 0), 0) / nilaiTersedia.length)
     : "—";
-  const menungguRows = daftar.filter((r) => r.nilai != null && !r.verifikasi);
-  const menungguTotal = semuaBaris.filter((r) => r.nilai != null && !r.verifikasi).length;
+  // Menunggu pemeriksaan = sudah dikumpulkan / punya nilai, tetapi belum diperiksa guru.
+  const menungguRows = daftar.filter((r) => !r.verifikasi && (r.dikumpulkan || r.nilai != null));
+  const menungguTotal = semuaBaris.filter((r) => !r.verifikasi && (r.dikumpulkan || r.nilai != null)).length;
 
   const verifikasiSemua = () =>
     verifikasiLkpdBatch(
@@ -146,12 +159,12 @@ export function HasilLkpdGuru({ aksi = true }: { aksi?: boolean }) {
       <div className="flex flex-wrap items-center gap-2 mb-3">
         <h2 className="h2">📊 Penilaian LKPD (Learning Journey)</h2>
         <Badge tone="purple">{daftar.length} data</Badge>
-        {menungguTotal ? <Badge tone="amber">{menungguTotal} menunggu verifikasi</Badge> : null}
+        {menungguTotal ? <Badge tone="amber">{menungguTotal} menunggu pemeriksaan</Badge> : null}
       </div>
       <p className="muted mb-3 max-w-[680px]">
-        Nilai per sub-bab naik sejak mission pertama (tanpa menunggu seluruh materi selesai). Pilih <b>Materi → Sub bab</b>
-        untuk menilai per sub-bab, lalu klik <b>👁 Periksa</b> pada baris siswa untuk membuka isi kerjanya — verifikasi
-        dilakukan setelah pekerjaan dicek, bukan sekali klik dari tabel.
+        Nilai dihitung dari benar/salah jawaban siswa. Pilih <b>Materi → Sub bab</b> untuk menilai per sub-bab, lalu klik{" "}
+        <b>👁 Periksa</b> pada baris siswa: buka isi kerja → tulis <b>feedback &amp; nilai</b> → <b>Simpan hasil pemeriksaan</b>.
+        Status baris berubah dari <b>Belum diperiksa</b> menjadi <b>Sudah diperiksa</b>.
       </p>
 
       {boleh && syncError ? (
@@ -205,7 +218,7 @@ export function HasilLkpdGuru({ aksi = true }: { aksi?: boolean }) {
             </select>
           </div>
           <div className="ml-auto">
-            <span className="label">4 · Verifikasi</span>
+            <span className="label">4 · Periksa &amp; verifikasi</span>
             <div className="mt-1">
               {aksi && boleh ? (
                 menungguRows.length ? (
@@ -232,7 +245,7 @@ export function HasilLkpdGuru({ aksi = true }: { aksi?: boolean }) {
             <span>
               {nilaiTersedia.length} dari {daftar.length} siswa dinilai
             </span>
-            {menungguRows.length ? <Badge tone="amber">{menungguRows.length} menunggu verifikasi</Badge> : null}
+            {menungguRows.length ? <Badge tone="amber">{menungguRows.length} menunggu pemeriksaan</Badge> : null}
           </div>
         ) : null}
       </div>
@@ -275,6 +288,8 @@ export function HasilLkpdGuru({ aksi = true }: { aksi?: boolean }) {
                       <td className="px-4 py-2.5 font-semibold">{r.nilai ?? "—"}</td>
                       <td className="px-4 py-2.5">
                         <Badge tone={st.tone}>{st.label}</Badge>
+                        {r.feedbackGuru ? <span title="Feedback guru tersimpan"> 💬</span> : null}
+                        {r.adaFoto ? <span title="Ada foto jawaban"> 📷</span> : null}
                       </td>
                       <td className="px-4 py-2.5 text-ink-muted">{fmtDateTime(r.updatedAt)}</td>
                       {aksi && boleh ? (

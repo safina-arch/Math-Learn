@@ -6,8 +6,9 @@ import { useEffect, useRef, useState } from "react";
 import { AppShell, Guard } from "@/components/shell";
 import { Badge, Empty, Modal, Progress } from "@/components/ui";
 import { BlokRenderer } from "@/components/lkpd/blocks";
+import { AnswerUpload } from "@/components/answer-upload";
 import { useStore } from "@/lib/store";
-import { cariProgress, progresSubtopic } from "@/lib/lkpd";
+import { cariProgress, missionTerjawab, nilaiSubtopic, progresSubtopic } from "@/lib/lkpd";
 
 /**
  * Perjalanan misi 5 tahap — WAJIB BERURUTAN:
@@ -17,7 +18,7 @@ import { cariProgress, progresSubtopic } from "@/lib/lkpd";
 export default function JourneyPage() {
   const params = useParams<{ topik: string; sub: string }>();
   const router = useRouter();
-  const { lkpdTopics, lkpdProgress, user, tandaiMissionLkpd, simpanJawabanLkpd, addNotification, ready } = useStore();
+  const { lkpdTopics, lkpdProgress, user, tandaiMissionLkpd, simpanJawabanLkpd, simpanLampiranLkpd, addNotification, ready } = useStore();
 
   const topik = lkpdTopics.find((t) => t.id === params.topik);
   const sub = topik?.subtopics.find((s) => s.id === params.sub);
@@ -25,6 +26,7 @@ export default function JourneyPage() {
 
   const [idx, setIdx] = useState(0);
   const [raya, setRaya] = useState(false);
+  const [kurang, setKurang] = useState<string[]>([]);
   const initRef = useRef(false);
 
   // Mulai dari mission pertama yang belum selesai — cukup sekali agar tidak melompat saat sinkron.
@@ -58,9 +60,23 @@ export default function JourneyPage() {
   const m: typeof missions[number] | undefined = missions[aman];
   const semuaSelesai = missions.length > 0 && batas >= missions.length;
   const boleh = (i: number) => i <= batas;
+  // LKPD sudah disubmit → terkunci (sekali kerja), data pengerjaan pertama tetap ada.
+  const terkunci = Boolean(prog?.dikumpulkan);
+  // Kunci/pembahasan hanya bila sudah dikumpulkan DAN guru/admin mengizinkan.
+  const bukaKunci = Boolean(prog?.dikumpulkan && topik.kunciTerbuka);
+  const nilaiAkhir = nilaiSubtopic(sub, prog);
 
   const tandai = () => {
-    if (!m) return;
+    if (!m || terkunci) return;
+    // Semua blok yang mengharuskan jawaban wajib terisi — nilai diambil dari
+    // jawaban, bukan sekadar menekan tombol.
+    const cek = missionTerjawab(m, prog?.jawaban || {});
+    if (!cek.boleh) {
+      setKurang(cek.kurang);
+      window.scrollTo({ top: 240, behavior: "smooth" });
+      return;
+    }
+    setKurang([]);
     const baru = !selesaiSet.has(m.id);
     tandaiMissionLkpd(sub.id, m.id);
     if (aman < missions.length - 1) {
@@ -108,6 +124,19 @@ export default function JourneyPage() {
             🔒 <b>Urutan wajib:</b> mission berikutnya terbuka setelah mission ini ditandai selesai. Jawabanmu tetap tersimpan saat berpindah tahap.
           </div>
 
+          {terkunci ? (
+            <div className="rounded-lg border border-amber-300 bg-amber-50 px-3.5 py-2.5 text-[13px] text-amber-900 mb-4">
+              📦 <b>LKPD sudah dikumpulkan</b> — jawaban tidak bisa diubah dan tidak bisa dikerjakan ulang. Nilai{" "}
+              <b>{nilaiAkhir ?? "—"}</b>{" "}
+              {prog?.menungguPemeriksaan ? "· menunggu pemeriksaan guru." : prog?.verifikasi ? "· sudah diperiksa guru ✓" : "· menunggu pemeriksaan guru."}
+              {prog?.feedbackGuru ? (
+                <span className="mt-2 block rounded-lg border border-amber-200 bg-white px-3 py-2 text-[13px] text-ink-soft">
+                  💬 <b>Feedback guru:</b> {prog.feedbackGuru}
+                </span>
+              ) : null}
+            </div>
+          ) : null}
+
           {/* Timeline mission — yang belum berurutan masih terkunci */}
           <div className="card card-pad !py-3 mb-4 overflow-x-auto">
             <div className="flex items-center gap-1 min-w-max">
@@ -153,9 +182,16 @@ export default function JourneyPage() {
                 </p>
                 <div className="mx-auto mt-4 max-w-[420px] rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
                   <p className="text-[12.5px] font-semibold text-amber-800 uppercase tracking-wide">Nilai pengerjaan</p>
-                  <p className="text-[30px] font-bold text-ink mt-0.5">{prog?.nilai ?? p.persen}</p>
-                  <p className="text-[15px] font-semibold text-amber-900 mt-1">⏳ Hasil sedang menunggu diverifikasi oleh guru</p>
-                  <p className="text-[13px] text-amber-800 mt-1">Status: <b>Menunggu verifikasi</b> — nilai menjadi fiks setelah guru menyetujuinya.</p>
+                  <p className="text-[30px] font-bold text-ink mt-0.5">{nilaiAkhir ?? "—"}</p>
+                  <p className="text-[15px] font-semibold text-amber-900 mt-1">⏳ Menunggu pemeriksaan guru</p>
+                  <p className="text-[13px] text-amber-800 mt-1">
+                    {nilaiAkhir == null
+                      ? "Jawabanmu berupa pertanyaan terbuka — nilai ditentukan guru setelah memeriksa."
+                      : "Status: Menunggu pemeriksaan — nilai menjadi fiks setelah guru memeriksa dan memverifikasi."}
+                  </p>
+                  <p className="text-[12.5px] text-amber-800 mt-2 border-t border-amber-200 pt-2">
+                    🔒 LKPD terkunci: tidak bisa dikerjakan ulang. Jawaban pertamamu tetap tersimpan.
+                  </p>
                 </div>
               </div>
               <div className="mt-4 flex flex-wrap gap-2">
@@ -181,23 +217,73 @@ export default function JourneyPage() {
                       blok={b}
                       jawaban={prog?.jawaban?.[b.id]}
                       onSimpan={(t) => simpanJawabanLkpd(sub.id, b.id, t)}
+                      readOnly={terkunci}
+                      bukaKunci={bukaKunci}
                     />
                   ))}
                 </div>
               )}
 
-              <div className="flex items-center gap-2 mt-5">
+              {/* Foto jawaban (tulisan tangan / proses pengerjaan) — pratinjau sebelum & sesudah kirim */}
+              <div className="card card-pad mt-3.5">
+                <p className="text-[14.5px] font-semibold mb-1">📷 Foto jawaban mission ini</p>
+                <p className="muted mb-2">
+                  {terkunci
+                    ? "Foto yang sudah dikirim ikut terkunci bersama jawabanmu."
+                    : "Foto tulisan tangan atau proses pengerjaanmu — bisa dilihat guru saat memeriksa LKPD."}
+                </p>
+                {terkunci ? (
+                  (prog?.lampiran?.[m.id]?.length || 0) > 0 ? (
+                    <div className="flex flex-wrap gap-2">
+                      {prog?.lampiran?.[m.id].map((f, i) => (
+                        <a key={`${f.url}-${i}`} href={f.url} target="_blank" rel="noreferrer">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={f.url} alt={f.name || "Foto jawaban"} className="h-20 w-20 rounded-lg border border-line object-cover" />
+                        </a>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-[13px] text-ink-faint italic">Belum ada foto pada mission ini.</p>
+                  )
+                ) : (
+                  <AnswerUpload
+                    attachments={prog?.lampiran?.[m.id] || []}
+                    onChange={(files) => simpanLampiranLkpd(sub.id, m.id, files)}
+                  />
+                )}
+              </div>
+
+              {/* Daftar isi mission yang belum terjawab — nilai diambil dari jawaban, bukan tombol */}
+              {kurang.length && !terkunci ? (
+                <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-[13px] text-amber-900">
+                  <p className="font-semibold mb-1">⚠️ Lengkapi dulu bagian ini sebelum menandai selesai:</p>
+                  <ul className="list-disc pl-5 space-y-0.5">
+                    {kurang.slice(0, 8).map((k, i) => (
+                      <li key={i}>{k}</li>
+                    ))}
+                    {kurang.length > 8 ? <li>…dan {kurang.length - 8} bagian lainnya</li> : null}
+                  </ul>
+                </div>
+              ) : null}
+
+              <div className="flex flex-wrap items-center gap-2 mt-5">
                 <button
                   className="btn-ghost !text-[13px]"
                   disabled={aman === 0}
                   onClick={() => pilihMission(aman - 1)}
                 >← Sebelumnya</button>
                 <span className="text-[12.5px] text-ink-faint hidden sm:inline">
-                  {selesaiSet.has(m.id) ? "Mission ini sudah selesai ✓" : "Selesaikan seluruh isi mission untuk lanjut"}
+                  {terkunci ? "🔒 Terkunci — sudah dikumpulkan" : selesaiSet.has(m.id) ? "Mission ini sudah selesai ✓" : "Selesaikan seluruh isi mission untuk lanjut"}
                 </span>
-                <button className="btn-primary !text-[13px] ml-auto" onClick={tandai}>
-                  {aman < missions.length - 1 ? (selesaiSet.has(m.id) ? "Lanjut ke mission berikutnya →" : "Tandai selesai & lanjut →") : "Tandai selesai & akhiri 🎉"}
-                </button>
+                {terkunci ? (
+                  <span className="ml-auto text-[12.5px] text-ink-muted">
+                    {aman < missions.length - 1 ? "Lanjut mission →" : "Lihat hasil"}
+                  </span>
+                ) : (
+                  <button className="btn-primary !text-[13px] ml-auto" onClick={tandai}>
+                    {aman < missions.length - 1 ? (selesaiSet.has(m.id) ? "Lanjut ke mission berikutnya →" : "Tandai selesai & lanjut →") : "Kumpulkan & akhiri LKPD 🎉"}
+                  </button>
+                )}
               </div>
             </div>
           ) : (
@@ -206,7 +292,13 @@ export default function JourneyPage() {
 
           {semuaSelesai && !raya ? (
             <div className="mt-5 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-[13.5px] text-green-800">
-              ✅ Seluruh mission selesai — nilai <b>{prog?.nilai ?? p.persen}</b> menunggu verifikasi guru.
+              ✅ Seluruh mission selesai — nilai <b>{nilaiAkhir ?? "—"}</b>{" "}
+              {prog?.verifikasi ? "· sudah diperiksa guru ✓" : "menunggu pemeriksaan guru."}
+              {prog?.feedbackGuru ? (
+                <span className="mt-2 block rounded-lg border border-green-200 bg-white px-3 py-2 text-[13px] text-ink-soft">
+                  💬 <b>Feedback guru:</b> {prog.feedbackGuru}
+                </span>
+              ) : null}
             </div>
           ) : null}
         </div>

@@ -162,7 +162,7 @@ function Content() {
     <div className="page-wrap !px-0 !pb-0 !max-w-none">
       <PageHeader
         title="Nilai & umpan balik"
-        desc="Kolom status menandai kiriman mana yang masih menunggu verifikasi guru dan mana yang sudah fiks."
+        desc="Status menandai kiriman mana yang masih Belum diperiksa dan mana yang sudah diperiksa guru beserta nilai & feedback-nya."
       />
       <div className="grid sm:grid-cols-2 gap-3 mb-3">
         <div className="card card-pad">
@@ -185,13 +185,22 @@ function Content() {
             {lkpdRows.map((r) => {
               const st = statusHasil(r);
               return (
-                <div key={r.key} className="px-4 py-3 flex flex-wrap items-center gap-2">
-                  <div className="min-w-0">
-                    <p className="text-[14.5px] font-medium">{r.submateri}</p>
-                    <p className="muted !text-[12.5px]">{r.materi} · {r.progres} · {fmtDateTime(r.updatedAt)}</p>
+                <div key={r.key} className="px-4 py-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="min-w-0">
+                      <p className="text-[14.5px] font-medium">{r.submateri}</p>
+                      <p className="muted !text-[12.5px]">{r.materi} · {r.progres} · {fmtDateTime(r.updatedAt)}</p>
+                    </div>
+                    <span className="ml-auto text-[22px] font-bold" title={r.nilai == null ? "Belum dinilai" : undefined}>
+                      {r.nilai ?? "—"}
+                    </span>
+                    <Badge tone={st.tone}>{st.label}</Badge>
                   </div>
-                  <span className="ml-auto text-[22px] font-bold">{r.nilai ?? `${r.persen}%`}</span>
-                  <Badge tone={st.tone}>{st.label}</Badge>
+                  {r.feedbackGuru ? (
+                    <p className="mt-2 text-[13px] bg-wash border border-line rounded-lg px-3 py-2">
+                      💬 <b>Feedback guru:</b> {r.feedbackGuru}
+                    </p>
+                  ) : null}
                 </div>
               );
             })}
@@ -208,7 +217,7 @@ function Content() {
           <div className="divide-y divide-line">
             {mine.map((s) => {
               const a = assignments.find((x) => x.id === s.assignmentId);
-              const fiks = s.status === "dinilai" && s.nilai != null;
+              const st = statusTugas(s);
               return (
                 <div key={s.id} className="px-4 py-3 flex flex-wrap items-center gap-2">
                   <div className="min-w-0">
@@ -216,7 +225,9 @@ function Content() {
                     <p className="muted !text-[12.5px]">{a ? TIPE_LABEL[a.tipe] : ""} · dikumpulkan {fmtDateTime(s.submittedAt)}</p>
                   </div>
                   <span className="ml-auto text-[20px] font-bold">{s.nilai ?? "—"}</span>
-                  <Badge tone={fiks ? "green" : "amber"}>{fiks ? "Sudah fiks ✓" : "Menunggu verifikasi guru"}</Badge>
+                  <Badge tone={st === "sudah" ? "green" : "amber"}>
+                    {st === "sudah" ? "Sudah diperiksa ✓" : "Belum diperiksa"}
+                  </Badge>
                 </div>
               );
             })}
