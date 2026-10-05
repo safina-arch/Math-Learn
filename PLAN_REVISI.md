@@ -1,11 +1,34 @@
 # Plan Revisi Math-Learn — Status Eksekusi
 
 Tanggal: 23 Sep – 5 Okt 2026 · Proyek: `mathlearn/` (Next.js 14 + Supabase + localStorage fallback)
-**Status: Gelombang 1–10 SELESAI · Sistem LKPD scalable (Learning Journey) LIVE · Gelombang 9 (nilai LKPD) & Gelombang 10 (cek kerja siswa) LIVE**
+**Status: Gelombang 1–11 SELESAI · Sistem LKPD scalable (Learning Journey) LIVE · Gelombang 11 (10 revisi prioritas) LIVE**
 
 Legenda: ✅ selesai & terverifikasi · ⏳ menunggu kredensial (Supabase & Vercel token)
 
 ---
+
+## Gelombang 11 — 10 revisi prioritas: penilaian jujur, feedback guru, sekali kerja, foto & anti-cheat (5 Okt 2026) ✅ build lulus (27 route) · LIVE
+
+| # | Revisi | Implementasi |
+|---|---|---|
+| 1 | **Bug penilaian/sinkronisasi jawaban** (salah dianggap benar; essay langsung "benar") | Nilai kini **dihitung dari isi jawaban**, bukan % mission: `lib/lkpd.ts` → `nilaiBlok()` (PG vs `opsi[i].benar`, isi-tabel semua sel terkunci + `selSama`, cocokkan semua pasangan) + `nilaiKerja()` + `missionTerjawab()`; `nilaiSubtopic()` **tidak lagi fallback ke persentase penyelesaian**. `lib/utils.ts` → `pgCorrect()` ketat (kunci/kosong = salah), `heuristicGrade()` tanpa skor minimum 10 & token 1 karakter ikut dihitung, `statusTugas()` mengecek sisa `feedbackAi[].draft`. Latihan (`app/tugas/[id]`) & evaluasi: **nilai otomatis hanya pilihan ganda**, uraian/essay → `status:"menunggu"`/`draf-ai` + draf saran guru; blok terbuka LKPD (`seret-slot`, `essay`, `refleksi`) → `menungguPemeriksaan`, tidak pernah dianggap benar |
+| 2 | **LKPD sekali kerja** — hasil pertama disimpan, tidak bisa diulang | `LkpdProgress.dikumpulkan` di-set saat misi terakhir ditandai → `simpanJawabanLkpd`/`simpanLampiranLkpd`/`tandaiMissionLkpd` ditolak; tombol **"Kumpulkan & akhiri LKPD 🎉"** + validasi `missionTerjawab` (peringatan daftar kurang), banner terkunci + mode baca-saja; tidak ada "Kerjakan lagi" |
+| 3 | **Feedback guru + status "Belum/Sudah diperiksa"** | `LkpdProgress.feedbackGuru` + `diperiksaPada`; modal `components/lkpd/cek.tsx` kini punya panel **Hasil pemeriksaan** (textarea feedback + nilai manual + **💾 Simpan hasil pemeriksaan** → `periksaLkpd(..., verifikasi:true)` + "Batalkan pemeriksaan"). Label seragam di `hasil.tsx`, `/nilai`, `/lkpd/[topik]`, dashboard, dan ekspor: **Belum diperiksa / Sudah diperiksa ✓** (logika `statusTugas`: `status==="dinilai"` tanpa draf tersisa). Siswa melihat 💬 Feedback guru; notifikasi siswa saat diperiksa |
+| 4 | **Foto sebagai jawaban LKPD** (dengan preview) | Aksi `simpanLampiranLkpd` + `AnswerUpload` per mission (preview, hapus, upload `/api/upload`) → `LkpdProgress.lampiran[missionId]`; tampil di modal guru (📷 Foto jawaban siswa) dan dibaca ulang pada kunjungan berikutnya |
+| 5 | **Akses edit penuh guru/admin** (teks/soal/essay/gambar/video/media, tidak hard-coded) | Tipe blok baru **`essay`** (`BLOCK_LABEL`, `JENIS_BLOK`, `blokBaru` default C4), pilihan **Taksonomi Bloom C1–C6** (`LkpdBlock.bloom`, `BLOOM_LABEL`, `BloomTag`) + **rubrik** per blok di `block-editor.tsx`, toggle topik **`kunciTerbuka`** ("Tampilkan kunci/pembahasan ke siswa setelah dikumpulkan") di `kelola/page.tsx`; editor mission/blok tetap bebas tambah-ubah-hapus-duplikat-urut + upload gambar & video |
+| 6 | **Latihan sekali kerja** | Setelah dikumpulkan: radio `disabled`, textarea `readOnly`, foto read-only, tombol **"Kumpulkan ulang"/"Simpan & keluar" diganti panel 🔒** "tugas ini hanya bisa dikerjakan satu kali" + jalan pintas *Lihat nilai & status*; draf dipulihkan **hanya bila belum pernah mengumpulkan**; `submit()` memblokir kiriman ulang |
+| 7 | **Evaluasi: jawaban tidak hilang** saat refresh/pindah halaman | Jawaban + lampiran **di-autoload & autosave (debounce 350 ms) ke `examKey`** → refresh/tutup tab memulihkan timer **dan jawaban**; `key={id}` me-reset state pindah antar evaluasi; `localStorage.removeItem(examKey)` dipindah **setelah `addSubmission` sukses** |
+| 8 | **Deteksi kecurangan akurat — satu kejadian satu hitungan** | Dependensi efek distabilkan (`cheatLogRef`, `user.id/nama`, `navGuardId`) → ganti-identitas store tidak membuat log ganda; **`pagehide`/`beforeunload` menandai refresh/tutup tab → BUKAN pelanggaran**; debounce **3 detik** menyatukan `blur` + `visibilitychange` + navigasi; `laporan` **tidak menghitung `tipe:"foto"`** → `n kejadian · x peserta · m aktivitas foto (tidak dihitung)` |
+| 9 | **Rotasi foto sesuai orientasi & tersimpan** | Tombol ⟲/⟳ di `periksa` kini **membakar rotasi ke dalam file** (`bakeRotation`: canvas → JPEG → `/api/upload`) lalu mengganti URL kiriman & menghapus entri `fotoRotasi` → siswa/admin/perangkat lain melihat orientasi sama; fallback rotasi CSS bila canvas gagal (CORS). Upload gambar mempertahankan EXIF asli |
+| 10 | **Responsive HP portrait** | Tombol hapus foto selalu tampil di layar sentuh (`flex sm:hidden sm:group-hover:flex` di `answer-upload` & `question-image-upload`); guardrail `globals.css` `@media (max-width:640px)`: `body{overflow-x:clip}` (halaman tidak bisa digeser ke samping), input/textarea/select 16px (anti auto-zoom iOS), `.btn{min-height:38px}`; semua tabel sudah dibungkus `overflow-x-auto`, nav bawah + drawer `lg:hidden` + modal bottom-sheet sudah ada |
+
+Catatan: tombol batch **✓ Verifikasi semua (n)** (permintaan Gelombang 9) tetap dipertahankan; verifikasi per baris tetap lewat modal **👁 Periksa**. Kunci/pembahasan LKPD ke siswa hanya muncul **setelah dikumpulkan** dan **hanya bila guru menyalakan `kunciTerbuka`**.
+
+Verifikasi: `npm.cmd run build` ✅ (lint + type, 27 route) → push `0fb0b2c` → Vercel deploy `dpl_C95M3c5ag8h7PoP9nHqhE4aUNrtV` **READY** → string produksi: `Simpan hasil pemeriksaan` ✓, `Sudah diperiksa` ✓, `Belum diperiksa` ✓, `Menunggu pemeriksaan` ✓, `tugas ini hanya bisa dikerjakan satu kali` ✓, `Nilai sementara` ✓, `Taksonomi Bloom` ✓, `Pertanyaan essay (terbuka` ✓, `aktivitas foto (tidak dihitung)` ✓, `LKPD sudah diperiksa guru` ✓, `Belum tepat — jawaban disimpan` ✓; CSS produksi `@media (max-width:640px){body{overflow-x:clip} … font-size:16px … min-height:38px}` ✓.
+
+---
+
+
 
 ## Gelombang 10 — Cek isi kerja siswa LKPD sebelum verifikasi (5 Okt 2026) ✅ build lulus (27 route) · LIVE
 
