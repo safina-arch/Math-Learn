@@ -219,15 +219,22 @@ function Content() {
               const a = assignments.find((x) => x.id === s.assignmentId);
               const st = statusTugas(s);
               return (
-                <div key={s.id} className="px-4 py-3 flex flex-wrap items-center gap-2">
-                  <div className="min-w-0">
-                    <p className="text-[14.5px] font-medium">{a?.judul || <span className="italic text-ink-faint">Tugas sudah dihapus</span>}</p>
-                    <p className="muted !text-[12.5px]">{a ? TIPE_LABEL[a.tipe] : ""} · dikumpulkan {fmtDateTime(s.submittedAt)}</p>
+                <div key={s.id} className="px-4 py-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="min-w-0">
+                      <p className="text-[14.5px] font-medium">{a?.judul || <span className="italic text-ink-faint">Tugas sudah dihapus</span>}</p>
+                      <p className="muted !text-[12.5px]">{a ? TIPE_LABEL[a.tipe] : ""} · dikumpulkan {fmtDateTime(s.submittedAt)}</p>
+                    </div>
+                    <span className="ml-auto text-[20px] font-bold">{s.nilai ?? "—"}</span>
+                    <Badge tone={st === "sudah" ? "green" : "amber"}>
+                      {st === "sudah" ? "Sudah diperiksa ✓" : "Belum diperiksa"}
+                    </Badge>
                   </div>
-                  <span className="ml-auto text-[20px] font-bold">{s.nilai ?? "—"}</span>
-                  <Badge tone={st === "sudah" ? "green" : "amber"}>
-                    {st === "sudah" ? "Sudah diperiksa ✓" : "Belum diperiksa"}
-                  </Badge>
+                  {st === "sudah" && s.feedbackGuru ? (
+                    <p className="mt-2 text-[13px] bg-wash border border-line rounded-lg px-3 py-2">
+                      💬 <b>Feedback guru:</b> {s.feedbackGuru}
+                    </p>
+                  ) : null}
                 </div>
               );
             })}
