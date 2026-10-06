@@ -1,13 +1,13 @@
 # Plan Revisi Math-Learn — Status Eksekusi
 
 Tanggal: 23 Sep – 6 Okt 2026 · Proyek: `mathlearn/` (Next.js 14 + Supabase + localStorage fallback)
-**Status: Gelombang 1–11 SELESAI · Sistem LKPD scalable (Learning Journey) LIVE · Gelombang 11 (10 revisi prioritas) LIVE · Gelombang 12 (7 perbaikan) siap deploy**
+**Status: Gelombang 1–12 SELESAI · Sistem LKPD scalable (Learning Journey) LIVE · Gelombang 11 (10 revisi prioritas) LIVE · Gelombang 12 (7 perbaikan) LIVE**
 
 Legenda: ✅ selesai & terverifikasi · ⏳ menunggu kredensial (Supabase & Vercel token)
 
 ---
 
-## Gelombang 12 — 7 perbaikan: status pemeriksaan jujur, feedback per soal, hasil tak hilang, format seragam, anti-cheat lintas kegiatan, gerbang evaluasi, stabil di 50+ user (6 Okt 2026) ✅ build lulus (27 route)
+## Gelombang 12 — 7 perbaikan: status pemeriksaan jujur, feedback per soal, hasil tak hilang, format seragam, anti-cheat lintas kegiatan, gerbang evaluasi, stabil di 50+ user (6 Okt 2026) ✅ build lulus (27 route) · LIVE
 
 | # | Permintaan | Implementasi |
 |---|---|---|
@@ -20,6 +20,8 @@ Legenda: ✅ selesai & terverifikasi · ⏳ menunggu kredensial (Supabase & Verc
 | 7 | **Jangan error saat >50 user bersamaan** | `persistShared`: **satu POST in-flight per resource** (payload terbaru menang, antrean diganti), **backoff eksponensial cap 8 dtk** saat galat; GET hanya `setState` bila isinya berubah; siklus sync dilewati saat tab **hidden** + langsung sinkron saat `visibilitychange`; **presence GET tiap siklus ke-3 (15 dtk)**; `simpanLocal` menulis per-kunci hanya bila berubah; `addCheatLog` dibatasi 800 baris; `export const dynamic = "force-dynamic"` pada `/api/sync` (tanpa cache basi); **banner `syncError` global** di `components/shell.tsx` untuk semua peran |
 
 Catatan: tombol batch **✓ Verifikasi semua (n)** tetap dipertahankan; kunci/pembahasan LKPD ke siswa tetap hanya setelah submit & bila `kunciTerbuka`.
+
+Verifikasi: `npm.cmd run build` ✅ (lint + type, 27 route) → push `7589140` → Vercel deploy `dpl_DG26jsarvfxD7Q6XH9iCEaHAA6SD` **READY** → string produksi ✅: `Buka kunci & buka sekarang`, `Pelanggaran pindah tab`, `meninggalkan tab`, `dikunci otomatis sudah lewat`, `buka otomatis belum tiba`, `Periksa berikutnya`, `Tugas sudah dihapus`, `Feedback untuk soal ini`, `Terkunci manual`, `satu kali keluar/pindah tab`, `Yakin mengumpulkan`, `pindah tab tercatat`; API produksi ✅: `GET /api/sync` → `configured:true` + 10 key (termasuk `lkpdTopics` & `lkpdProgress`), `POST` tulis OK, `POST resource=presence` ditolak 400 (wadah LKPD+tombstone terlindungi), data utuh pasca-merge (notifications 57 · lkpdProgress 41).
 
 ---
 
