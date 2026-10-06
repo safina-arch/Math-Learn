@@ -7,7 +7,7 @@ import { Badge, Empty, PageHeader } from "@/components/ui";
 import { TaskModal } from "@/components/task-modal";
 import { SubmissionStatus } from "@/components/submission-status";
 import { useStore } from "@/lib/store";
-import { fmtDateTime, JENDELA_META, jendelaEvaluasi } from "@/lib/utils";
+import { fmtDateTime, bukaEvaluasi, JENDELA_META, jendelaEvaluasi, nowIso } from "@/lib/utils";
 import type { Assignment } from "@/lib/types";
 
 export default function EvaluasiPage() {
@@ -81,14 +81,26 @@ function List() {
                 <p className="text-[15.5px] font-semibold mt-2">{a.judul}</p>
                 <p className="muted mt-0.5 line-clamp-2">{a.deskripsi}</p>
                 {manage ? (
-                  <div className="flex gap-2 mt-2" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex flex-wrap gap-2 mt-2" onClick={(e) => e.stopPropagation()}>
                     <button className="btn-ghost !py-1.5 !text-[12.5px]" onClick={() => { setEditT(a); setTOpen(true); }}>Ubah</button>
-                    {user?.role === "admin" ? (
+                    {/* Buka/kunci untuk GURU maupun admin. "Buka" juga menormalkan jadwal
+                        (bukaAt masih masa depan / tutupAt sudah lewat) supaya siswa benar-benar
+                        bisa langsung mengerjakan — bukan hanya label kunci yang hilang. */}
+                    {jendela === "buka" ? (
                       <button
-                        className={`!py-1.5 !text-[12.5px] rounded-md border px-3 font-medium ${a.terkunci ? "border-green-200 bg-green-50 text-green-700" : "border-red-200 bg-red-50 text-red-700"}`}
-                        onClick={() => upsertAssignment({ ...a, terkunci: !a.terkunci })}
-                      >{a.terkunci ? "Buka kunci" : "Kunci evaluasi"}</button>
-                    ) : null}
+                        className="!py-1.5 !text-[12.5px] rounded-md border px-3 font-medium border-red-200 bg-red-50 text-red-700"
+                        onClick={() => upsertAssignment({ ...a, terkunci: true })}
+                      >Kunci evaluasi</button>
+                    ) : (
+                      <button
+                        className="!py-1.5 !text-[12.5px] rounded-md border px-3 font-medium border-green-200 bg-green-50 text-green-700"
+                        onClick={() => {
+                          if (!confirm(`Buka evaluasi "${a.judul}" untuk semua siswa sekarang?\n\nJadwal buka yang belum tiba dan jadwal tutup yang sudah lewat akan dilepas, sehingga siswa langsung bisa mengerjakan.`)) return;
+                          upsertAssignment(bukaEvaluasi(a));
+                          addNotification({ userId: "all-siswa", kategori: "evaluasi", judul: `Evaluasi dibuka: ${a.judul}`, isi: `Evaluasi sudah bisa dikerjakan sekarang${a.durasiMenit ? ` (durasi ${a.durasiMenit} menit)` : ""}.` });
+                        }}
+                      >🔓 Buka kunci &amp; buka sekarang</button>
+                    )}
                     <button className="btn-danger !py-1.5 !text-[12.5px]" onClick={() => deleteAssignment(a.id)}>Hapus</button>
                   </div>
                 ) : null}

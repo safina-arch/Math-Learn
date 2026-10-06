@@ -1,58 +1,10 @@
 "use client";
 
-import { Fragment, useRef, useState } from "react";
 import { AppShell, Guard } from "@/components/shell";
 import { ExportMenu } from "@/components/export-menu";
-import { Badge, Empty, Modal, PageHeader, Stat } from "@/components/ui";
-import { HasilLkpdGuru, barisHasil } from "@/components/lkpd/hasil";
+import { PageHeader } from "@/components/ui";
+import { HasilKirimanGuru } from "@/components/kiriman-guru";
 import { useStore } from "@/lib/store";
-import { fmtDateTime, STATUS_TUGAS_META, statusRingkasan, statusTugas, TIPE_LABEL, TIPE_TONE, TIPEURUT } from "@/lib/utils";
-import type { AssignmentType, MaterialAttachment } from "@/lib/types";
-
-type FilterTipe = "semua" | AssignmentType;
-type SortKey = "siswa" | "tugas" | "nilai" | "waktu";
-
-/**
- * Rotasi foto DITENKAN ke dalam file (bukan sekadar CSS) — hasilnya semua yang
- * membuka foto (siswa, guru, admin, perangkat lain) melihat orientasi yang sama.
- * Elemen browser memakai orientasi EXIF asli, sehingga putaran sesuai tampilan.
- * `null` = gagal (mis. CORS) → pemanggil mempertahankan rotasi tampilan.
- */
-async function bakeRotation(file: MaterialAttachment, deg: number): Promise<MaterialAttachment | null> {
-  try {
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    const loaded = await new Promise<boolean>((res) => {
-      img.onload = () => res(true);
-      img.onerror = () => res(false);
-      img.src = file.url;
-    });
-    if (!loaded || !img.naturalWidth || !img.naturalHeight) return null;
-    const w = img.naturalWidth;
-    const h = img.naturalHeight;
-    const putar = ((deg % 360) + 360) % 360;
-    const tukarSisi = putar === 90 || putar === 270;
-    const canvas = document.createElement("canvas");
-    canvas.width = tukarSisi ? h : w;
-    canvas.height = tukarSisi ? w : h;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return null;
-    ctx.translate(canvas.width / 2, canvas.height / 2);
-    ctx.rotate((putar * Math.PI) / 180);
-    ctx.drawImage(img, -w / 2, -h / 2);
-    const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, "image/jpeg", 0.92));
-    if (!blob) return null;
-    const form = new FormData();
-    const nama = (file.name || "foto-jawaban").replace(/\.[a-z0-9]+$/i, "") + "-rotasi.jpg";
-    form.append("file", new File([blob], nama, { type: "image/jpeg" }));
-    const r = await fetch("/api/upload", { method: "POST", body: form });
-    const j = (await r.json()) as { url?: string; name?: string; size?: number; error?: string };
-    if (!r.ok || !j.url) return null;
-    return { ...file, url: j.url, name: j.name || file.name, size: j.size ?? file.size };
-  } catch {
-    return null;
-  }
-}
 
 export default function PeriksaPage() {
   return (
@@ -64,265 +16,22 @@ export default function PeriksaPage() {
   );
 }
 
+/**
+ * "Hasil siswa" untuk guru/admin. Seluruh penilaian latihan & evaluasi kini berada
+ * dalam satu komponen bersama (`HasilKirimanGuru`) berformat Learning Journey —
+ * papan langkah Jenis → Kelas → Tugas → Status + tabel yang bisa diurutkan,
+ * dan modal periksa (termasuk penanda "sudah diperiksa" & hapus kiriman).
+ */
 function Content() {
-  const { submissions, assignments, users, updateSubmission, addNotification, lkpdTopics, lkpdProgress } = useStore();
-  const [openId, setOpenId] = useState<string | null>(null);
-  const [nilai, setNilai] = useState("");
-  const [catatan, setCatatan] = useState("");
-  const [aiEdits, setAiEdits] = useState<Record<string, { skor: number; feedback: string }>>({});
-  const [filter, setFilter] = useState<FilterTipe>("semua");
-  /** Foto yang sedang dirotasi ke dalam file (tombol putar dinonaktifkan sementara). */
-  const [rotasiProses, setRotasiProses] = useState<Record<string, boolean>>({});
-  /** Mirror kiriman terbaru agar hasil upload lambat tidak menimpa perubahan lain. */
-  const submisiRef = useRef(submissions);
-  submisiRef.current = submissions;
-  /** Sorting kolom — kelompok jenis tugas (latihan/LKPD/evaluasi) selalu dijaga utuh. */
-  const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 } | null>(null);
-
-  const current = submissions.find((s) => s.id === openId);
-  const currentAssign = current ? assignments.find((a) => a.id === current.assignmentId) : null;
-  const ringkas = statusRingkasan(assignments, submissions, users);
-
-  // Urutan baku: kelompok per jenis tugas (Latihan → LKPD → Evaluasi), dalam kelompok urut alfabet nama.
-  const tipeOf = (sid: string): AssignmentType => assignments.find((x) => x.id === sid)?.tipe || "latihan";
-  const nilaiDari = (sid: string) => assignments.find((x) => x.id === sid);
-  const kunciSort = (s: (typeof submissions)[number], key: SortKey): string | number => {
-    if (key === "siswa") return s.siswaNama.toLowerCase();
-    if (key === "tugas") return (nilaiDari(s.assignmentId)?.judul || "").toLowerCase();
-    if (key === "nilai") return s.nilai ?? -1;
-    return s.submittedAt;
-  };
-  const urutKiriman = submissions
-    // Hasil siswa wajib terkait dengan tugasnya — kiriman tanpa tugas (sudah dihapus) tidak ditampilkan.
-    .filter((s) => assignments.some((a) => a.id === s.assignmentId))
-    .filter((s) => filter === "semua" || tipeOf(s.assignmentId) === filter)
-    .slice()
-    .sort((a, b) => {
-      // Primer: jenis tugas — agar hasil LKPD, latihan, dan evaluasi tidak tercampur.
-      const t = TIPEURUT[tipeOf(a.assignmentId)] - TIPEURUT[tipeOf(b.assignmentId)];
-      if (t) return t;
-      // Sekunder: kolom yang diklik user (default: nama siswa alfabet).
-      if (sort) {
-        const va = kunciSort(a, sort.key);
-        const vb = kunciSort(b, sort.key);
-        if (va < vb) return -sort.dir;
-        if (va > vb) return sort.dir;
-        return a.siswaNama.localeCompare(b.siswaNama, "id");
-      }
-      return a.siswaNama.localeCompare(b.siswaNama, "id") || b.submittedAt.localeCompare(a.submittedAt);
-    });
-  const klikSort = (key: SortKey) => setSort((p) => (p?.key === key ? { key, dir: p.dir === 1 ? -1 : 1 } : { key, dir: 1 }));
-  const panah = (key: SortKey) => (sort?.key === key ? (sort.dir === 1 ? "▲" : "▼") : "↕");
-  const th = (key: SortKey, label: string) => (
-    <th className="px-4 py-2.5 font-medium">
-      <button type="button" className={`inline-flex items-center gap-1 hover:text-ink ${sort?.key === key ? "text-ink font-semibold" : ""}`} onClick={() => klikSort(key)}>
-        {label}<span className="text-[10px] text-ink-faint">{panah(key)}</span>
-      </button>
-    </th>
-  );
-  // Hitungan chip memakai kiriman yang masih punya tugas agar cocok dengan tabel.
-  const berelasi = submissions.filter((s) => assignments.some((a) => a.id === s.assignmentId));
-  const hitungTipe = (t: AssignmentType) => berelasi.filter((s) => tipeOf(s.assignmentId) === t).length;
-  /** Chip LKPD ikut menghitung penilaian journey LKPD (per sub-bab), bukan hanya kiriman tugas lama. */
-  const lkpdJourney = barisHasil(lkpdTopics, lkpdProgress, users).length;
-  const chips: { key: FilterTipe; label: string }[] = [
-    { key: "semua", label: `Semua (${berelasi.length + lkpdJourney})` },
-    { key: "latihan", label: `${TIPE_LABEL.latihan} (${hitungTipe("latihan")})` },
-    { key: "lkpd", label: `${TIPE_LABEL.lkpd} (${hitungTipe("lkpd") + lkpdJourney})` },
-    { key: "evaluasi", label: `${TIPE_LABEL.evaluasi} (${hitungTipe("evaluasi")})` },
-  ];
-
-  function open(sid: string) {
-    const s = submissions.find((x) => x.id === sid);
-    if (!s) return;
-    setOpenId(sid);
-    setNilai(s.nilai != null ? String(s.nilai) : "");
-    setCatatan(s.feedbackGuru || "");
-    const e: Record<string, { skor: number; feedback: string }> = {};
-    Object.entries(s.feedbackAi).forEach(([k, v]) => { e[k] = { skor: v.skor, feedback: v.feedback }; });
-    setAiEdits(e);
-  }
-
-  function publish() {
-    if (!current) return;
-    const patchedAi: typeof current.feedbackAi = { ...current.feedbackAi };
-    Object.entries(aiEdits).forEach(([k, v]) => {
-      // Batas nilai per soal dan nilai akhir: 0–100.
-      if (patchedAi[k]) patchedAi[k] = { ...patchedAi[k], skor: Math.min(100, Math.max(0, Math.round(v.skor) || 0)), feedback: v.feedback, draft: false };
-    });
-    const n = nilai === "" ? current.nilai : Math.min(100, Math.max(0, Math.round(Number(nilai) || 0)));
-    updateSubmission(current.id, { nilai: n, feedbackGuru: catatan, feedbackAi: patchedAi, status: "dinilai" });
-    addNotification({ userId: current.siswaId, kategori: "nilai", judul: "Kiriman sudah diperiksa guru", isi: `${currentAssign?.judul}: nilai ${n} — status "Sudah diperiksa". ${catatan.slice(0, 100)}` });
-    setOpenId(null);
-  }
-
+  const { submissions, assignments, users } = useStore();
   return (
     <div className="page-wrap !px-0 !pb-0 !max-w-none">
       <PageHeader
         title="Periksa kiriman"
-        desc="Setujui draf AI, sunting umpan balik, atau override nilai sebelum diterbitkan ke siswa."
+        desc="Saring per jenis/kelas/tugas, urutkan per kolom, lalu terbitkan nilai & umpan balik ke siswa."
         right={<ExportMenu submissions={submissions} assignments={assignments} users={users} />}
       />
-      <div className="grid sm:grid-cols-2 gap-3 mb-3">
-        <Stat label="Belum diperiksa" value={String(ringkas.blm)} sub="kiriman menunggu pemeriksaan" />
-        <Stat label="Sudah diperiksa" value={String(ringkas.sudah)} sub="nilai sudah diterbitkan" />
-      </div>
-      <div className="flex flex-wrap items-center gap-1.5 mb-3">
-        {chips.map((c) => (
-          <button
-            key={c.key}
-            className={`btn !py-1.5 !px-3 !text-[12.5px] ${filter === c.key ? "bg-ink text-white border border-ink" : "btn-ghost"}`}
-            onClick={() => setFilter(c.key)}
-          >{c.label}</button>
-        ))}
-        <span className="text-[12px] text-ink-faint ml-auto">
-          Urut: per jenis tugas → alfabet nama siswa {sort ? <button className="text-primary font-medium" onClick={() => setSort(null)}>reset</button> : null}
-        </span>
-      </div>
-      {/* Papan langkah penilaian LKPD (Nilai siswa → LKPD → Materi → Sub bab → Verifikasi). */}
-      {filter === "lkpd" ? <HasilLkpdGuru /> : null}
-      {filter === "lkpd" && hitungTipe("lkpd") === 0 ? null : submissions.length === 0 ? <Empty title="Belum ada kiriman" desc="Kiriman siswa dari LKPD, latihan, dan evaluasi akan muncul di sini." /> : urutKiriman.length === 0 ? (
-        <Empty title="Tidak ada kiriman pada jenis ini" desc="Pilih jenis tugas lain pada filter di atas." />
-      ) : (
-        <div className="card overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-[13.5px] min-w-[680px]">
-              <thead><tr className="text-left text-[12px] text-ink-muted bg-wash/50">
-                {th("siswa", "Siswa")}
-                <th className="px-4 py-2.5 font-medium">Jenis</th>
-                {th("tugas", "Tugas")}
-                <th className="px-4 py-2.5 font-medium">Status</th>
-                {th("nilai", "Skor")}
-                {th("waktu", "Dikumpulkan")}
-                <th className="px-4 py-2.5" />
-              </tr></thead>
-              <tbody>
-                {(() => {
-                  let lastTipe: AssignmentType | null = null;
-                  return urutKiriman.map((s) => {
-                    const a = assignments.find((x) => x.id === s.assignmentId);
-                    const tipe = tipeOf(s.assignmentId);
-                    const meta = STATUS_TUGAS_META[statusTugas(s)];
-                    // Kelompok jenis tugas selalu ditampilkan agar LKPD, latihan, dan evaluasi tidak tercampur.
-                    const showHead = filter === "semua" && tipe !== lastTipe;
-                    lastTipe = tipe;
-                    return (
-                      <Fragment key={s.id}>
-                        {showHead ? (
-                          <tr><td colSpan={7} className="px-4 pt-3 pb-1 text-[12px] font-semibold uppercase tracking-wide text-ink-faint bg-wash/40">{TIPE_LABEL[tipe]} · {urutKiriman.filter((x) => tipeOf(x.assignmentId) === tipe).length} kiriman</td></tr>
-                        ) : null}
-                        <tr className="table-row">
-                          <td className="px-4 py-2.5"><b>{s.siswaNama}</b><span className="block text-[12px] text-ink-muted">{s.kelas}</span></td>
-                          <td className="px-4 py-2.5"><Badge tone={TIPE_TONE[tipe]}>{TIPE_LABEL[tipe]}</Badge></td>
-                          <td className="px-4 py-2.5">{a?.judul || "—"}</td>
-                          <td className="px-4 py-2.5"><Badge tone={meta.tone}>{meta.label}</Badge></td>
-                          <td className="px-4 py-2.5 font-semibold">{s.nilai ?? "—"}</td>
-                          <td className="px-4 py-2.5 text-ink-muted">{fmtDateTime(s.submittedAt)}</td>
-                          <td className="px-4 py-2.5 text-right"><button className="btn-ghost !py-1.5 !text-[12.5px]" onClick={() => open(s.id)}>Periksa</button></td>
-                        </tr>
-                      </Fragment>
-                    );
-                  });
-                })()}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* Nilai hasil pengerjaan LKPD (learning journey) siswa — menunggu & sudah diverifikasi. */}
-      {filter === "lkpd" ? null : <HasilLkpdGuru />}
-
-      {/* Laporan kecurangan dipindah ke halaman sendiri: menu "Laporan kecurangan" pada sidebar. */}
-
-      <Modal open={!!current} onClose={() => setOpenId(null)} title={`Periksa — ${current?.siswaNama}`} wide>
-        {current && currentAssign ? (
-          <div className="space-y-3">
-            {currentAssign.questions.map((q, i) => (
-              <div key={q.id} className="rounded-xl border border-line p-3.5">
-                <p className="text-[12.5px] text-ink-muted font-medium">SOAL {i + 1} · {q.tipe.toUpperCase()} · bobot {q.bobot}</p>
-                <p className="text-[14px] font-medium mt-0.5 whitespace-pre-wrap">{q.teks}</p>
-                {q.gambar?.length ? (
-                  <div className="flex flex-wrap gap-2 mt-2">
-                    {q.gambar.map((g, gi) => (
-                      <a key={`${g.url}-${gi}`} href={g.url} target="_blank" rel="noreferrer" title={g.name}>
-                        <img src={g.url} alt={g.name || "Foto soal"} className="max-h-44 rounded-lg border border-line object-contain bg-white" />
-                      </a>
-                    ))}
-                  </div>
-                ) : null}
-                {q.kunci ? <p className="text-[12.5px] text-ink-muted mt-1">Kunci: {q.kunci}{q.rubrik ? ` · Rubrik: ${q.rubrik}` : ""}</p> : null}
-                <p className="text-[13.5px] mt-2 bg-wash border border-line rounded-lg px-3 py-2 whitespace-pre-wrap">{current.jawaban[q.id] || "(kosong)"}</p>
-                {current.jawabanLampiran?.[q.id]?.length ? (
-                  <div className="mt-2">
-                    <p className="text-[12px] text-ink-muted mb-1.5">Foto jawaban siswa</p>
-                    <div className="flex flex-wrap gap-3">
-                      {current.jawabanLampiran[q.id].map((file, index) => {
-                        const deg = current.fotoRotasi?.[file.url] ?? 0;
-                        const memasak = Boolean(rotasiProses[file.url]);
-                        const rotate = (next: number) => {
-                          if (!current || memasak) return;
-                          const n = ((next % 360) + 360) % 360;
-                          const urlLama = file.url;
-                          // 1) Tampilan langsung berputar (responsif).
-                          updateSubmission(current.id, { fotoRotasi: { ...(current.fotoRotasi || {}), [urlLama]: n } });
-                          // 2) Putaran ditulis ke file baru — orientasi ikut tersimpan,
-                          //    sehingga siswa/admin juga melihat hasil rotasi yang sama.
-                          setRotasiProses((p) => ({ ...p, [urlLama]: true }));
-                          void bakeRotation(file, n).then((baru) => {
-                            setRotasiProses((p) => { const c = { ...p }; delete c[urlLama]; return c; });
-                            if (!baru) return; // gagal (mis. CORS) → tetap memakai rotasi tampilan
-                            const segar = submisiRef.current.find((x) => x.id === current.id);
-                            if (!segar) return;
-                            const daftar = [...(segar.jawabanLampiran?.[q.id] || [])];
-                            daftar[index] = baru;
-                            const rotasi = { ...(segar.fotoRotasi || {}) };
-                            delete rotasi[urlLama];
-                            updateSubmission(current.id, { jawabanLampiran: { ...(segar.jawabanLampiran || {}), [q.id]: daftar }, fotoRotasi: rotasi });
-                          });
-                        };
-                        return (
-                          <div key={`${file.url}-${index}`} className="w-24">
-                            <a href={file.url} target="_blank" rel="noreferrer" title={`${file.name} — klik untuk membuka ukuran penuh`} className="block">
-                              <img
-                                src={file.url}
-                                alt={file.name || "Foto jawaban siswa"}
-                                className="h-24 w-24 rounded-lg border border-line bg-white object-contain transition-transform"
-                                style={{ transform: `rotate(${deg}deg)` }}
-                              />
-                            </a>
-                            <div className="flex justify-center gap-1 mt-1">
-                              <button type="button" aria-label="Putar kiri" title={memasak ? "Memproses…" : "Putar kiri"} disabled={memasak} className="h-6 w-6 rounded border border-line bg-white text-[13px] text-ink-muted hover:border-primary-300 hover:text-primary disabled:opacity-50" onClick={() => rotate(deg - 90)}>⟲</button>
-                              <button type="button" aria-label="Putar kanan" title={memasak ? "Memproses…" : "Putar kanan"} disabled={memasak} className="h-6 w-6 rounded border border-line bg-white text-[13px] text-ink-muted hover:border-primary-300 hover:text-primary disabled:opacity-50" onClick={() => rotate(deg + 90)}>⟳</button>
-                              <span className="h-6 px-1.5 inline-flex items-center text-[11px] text-ink-faint tabular-nums">{memasak ? "…" : `${((deg % 360) + 360) % 360}°`}</span>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ) : null}
-                <div className="grid sm:grid-cols-[100px_1fr] gap-2 mt-2">
-                  <div>
-                    <div className="flex items-center justify-between"><label className="label">Persentase AI</label><span className="text-[12px] font-semibold text-primary">{aiEdits[q.id]?.skor ?? 0}%</span></div>
-                    <input type="number" min={0} max={100} className="input" value={aiEdits[q.id]?.skor ?? 0} onChange={(e) => setAiEdits((p) => ({ ...p, [q.id]: { skor: Math.min(100, Math.max(0, Math.round(Number(e.target.value) || 0))), feedback: p[q.id]?.feedback || "" } }))} />
-                    <div className="h-1.5 rounded-full bg-wash mt-1.5 overflow-hidden"><div className="h-full rounded-full bg-primary transition-all" style={{ width: `${Math.min(100, Math.max(0, aiEdits[q.id]?.skor ?? 0))}%` }} /></div>
-                  </div>
-                  <div><label className="label">Draf umpan balik (sunting bila perlu)</label><input className="input" value={aiEdits[q.id]?.feedback || ""} onChange={(e) => setAiEdits((p) => ({ ...p, [q.id]: { skor: p[q.id]?.skor || 0, feedback: e.target.value } }))} /></div>
-                </div>
-              </div>
-            ))}
-            <div className="grid sm:grid-cols-2 gap-3">
-              <div><label className="label">Nilai akhir (override · maks. 100)</label><input type="number" min={0} max={100} className="input" value={nilai} onChange={(e) => setNilai(e.target.value === "" ? "" : String(Math.min(100, Math.max(0, Math.round(Number(e.target.value) || 0)))))} placeholder="0–100" /></div>
-              <div><label className="label">Umpan balik akhir untuk siswa</label><input className="input" value={catatan} onChange={(e) => setCatatan(e.target.value)} placeholder="1–2 kalimat apresiasi + saran" /></div>
-            </div>
-            <div className="flex gap-2">
-              <button className="btn-primary flex-1" onClick={publish}>Setujui & terbitkan</button>
-              <button className="btn-ghost" onClick={() => setOpenId(null)}>Batal</button>
-            </div>
-          </div>
-        ) : null}
-      </Modal>
+      <HasilKirimanGuru />
     </div>
   );
 }

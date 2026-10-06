@@ -1,9 +1,25 @@
 # Plan Revisi Math-Learn — Status Eksekusi
 
-Tanggal: 23 Sep – 5 Okt 2026 · Proyek: `mathlearn/` (Next.js 14 + Supabase + localStorage fallback)
-**Status: Gelombang 1–11 SELESAI · Sistem LKPD scalable (Learning Journey) LIVE · Gelombang 11 (10 revisi prioritas) LIVE**
+Tanggal: 23 Sep – 6 Okt 2026 · Proyek: `mathlearn/` (Next.js 14 + Supabase + localStorage fallback)
+**Status: Gelombang 1–11 SELESAI · Sistem LKPD scalable (Learning Journey) LIVE · Gelombang 11 (10 revisi prioritas) LIVE · Gelombang 12 (7 perbaikan) siap deploy**
 
 Legenda: ✅ selesai & terverifikasi · ⏳ menunggu kredensial (Supabase & Vercel token)
+
+---
+
+## Gelombang 12 — 7 perbaikan: status pemeriksaan jujur, feedback per soal, hasil tak hilang, format seragam, anti-cheat lintas kegiatan, gerbang evaluasi, stabil di 50+ user (6 Okt 2026) ✅ build lulus (27 route)
+
+| # | Permintaan | Implementasi |
+|---|---|---|
+| 1 | **Status hasil Latihan salah** — semua "sudah diperiksa" padahal guru belum cek | `statusTugas()` (`lib/utils.ts`) berbasis **bukti pemeriksaan**: "Sudah diperiksa" hanya bila `diperiksa === true` ATAU `feedbackGuru` terisi — penilaian otomatis sistem (PG dinilai sendiri / nilai sementara) bukan bukti; `publish()` pada panel periksa kini mengisi `diperiksa` + `diperiksaPada`; baris lama yang berstatus "dinilai" tanpa catatan guru otomatis kembali **Belum diperiksa** |
+| 2 | **Feedback guru per soal LKPD** (bukan satu paragraf) | `LkpdProgress.feedbackBlok: Record<blokId, teks>`; `components/lkpd/cek.tsx` → komponen `FeedbackBlok` (textarea "💬 Feedback untuk soal ini" per blok, ringkasan soal + jawaban siswa), disimpan **dalam satu klik** "💾 Simpan hasil pemeriksaan" + badge "💬 Feedback per soal belum disimpan"; siswa melihat 💬 per blok di halaman LKPD setelah dikumpulkan |
+| 3 | **Hasil latihan siswa tidak seluruhnya muncul di guru** | Akar masalah: efek "prune kiriman yatim" dihapus, dan `app/api/sync/route.ts` ditulis ulang → **union-merge per baris** (`kunciBaris`/`stempel`/`gabungBaris`, stempel `revisiAt‖submittedAt‖createdAt‖timestamp`), baris yang hilang dari payload **dipertahankan** kecuali masuk daftar `hapus` (tombstone disimpan di `wadah.hapus` pada row `presence`); laporan `lkpdTopics`/`lkpdProgress` tetap lewat wadah (constraint `app_state_key_check`); kiriman yang tugasnya terhapus kini tetap tampil dengan label **"Tugas sudah dihapus"** |
+| 4 | **Format penilaian latihan & evaluasi seperti Learning Journey** | Komponen bersama **`components/kiriman-guru.tsx`** dipakai `/periksa` dan `/nilai` (admin) — papan langkah **① Jenis → ② Kelas → ③ Tugas → ④ Status → ⑤ Periksa berikutnya (n)**, ringkasan (rata-rata / n dinilai / menunggu / sudah), tabel **terurut per kolom** (Siswa·Jenis·Tugas·Kelas·Status·Nilai·Dikumpulkan), tombol batch "✓ Verifikasi semua" LKPD tetap ada, modal 👁 Periksa + **🗑 Hapus kiriman (izinkan mengerjakan ulang)**; item nav admin **"Hasil siswa" → `/periksa`** ditambahkan |
+| 5 | **Peringatan kecurangan juga untuk LKPD & latihan; 1 keluar/pindah tab = 1 hitungan; real-time** | Komponen bersama **`components/pengawas-kecurangan.tsx`**: `blur` + `visibilitychange` untuk satu perpindahan disatukan penanda `tinggal` (reset saat kembali), jeda 1,5 dtk, kejadian `visibilitychange` ditunda 350 ms agar **refresh/tutup tab tidak dihitung**, jendela grasi dialog foto dihormati; **peringatan modal tampil langsung** saat kejadian + hitungan di header; dipasang di `evaluasi/[id]` (termasuk pencatatan navigasi sidebar), `tugas/[id]`, `lkpd/[topik]/[sub]`; jumlah ikut dikirim saat submit + notifikasi guru; `/laporan` kini menampilkan **judul kegiatan** (LKPD·sub materi / Latihan·judul / Evaluasi·judul) dan aturan hitungan |
+| 6 | **Bug evaluasi: admin sudah buka kunci tapi banyak siswa belum bisa mengerjakan** | Tombol buka/kunci kini untuk **guru maupun admin** dengan label "🔓 Buka kunci & buka sekarang" → `bukaEvaluasi()` di `lib/utils.ts` **menormalkan jadwal**: `bukaAt` masih masa depan → `null`, `tutupAt` sudah lewat → `null` (dulu hanya `terkunci` yang dilepas sehingga layar siswa tetap "Belum dibuka"/"Ditutup otomatis") + notifikasi siswa; `TaskModal` menampilkan sakelar **"Terkunci manual"** serta peringatan "waktu tutup sudah lewat / buka belum tiba"; guru dapat **menghapus kiriman** untuk memberi kesempatan ulang (`deleteSubmission`) |
+| 7 | **Jangan error saat >50 user bersamaan** | `persistShared`: **satu POST in-flight per resource** (payload terbaru menang, antrean diganti), **backoff eksponensial cap 8 dtk** saat galat; GET hanya `setState` bila isinya berubah; siklus sync dilewati saat tab **hidden** + langsung sinkron saat `visibilitychange`; **presence GET tiap siklus ke-3 (15 dtk)**; `simpanLocal` menulis per-kunci hanya bila berubah; `addCheatLog` dibatasi 800 baris; `export const dynamic = "force-dynamic"` pada `/api/sync` (tanpa cache basi); **banner `syncError` global** di `components/shell.tsx` untuk semua peran |
+
+Catatan: tombol batch **✓ Verifikasi semua (n)** tetap dipertahankan; kunci/pembahasan LKPD ke siswa tetap hanya setelah submit & bila `kunciTerbuka`.
 
 ---
 

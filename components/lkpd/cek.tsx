@@ -28,6 +28,64 @@ function parseState(teks?: string): StateAktivitas | null {
   }
 }
 
+/** Tipe blok yang menampilkan jawaban siswa → layak menerima feedback guru per soal. */
+const TIPE_JAWAB: LkpdBlock["tipe"][] = ["pertanyaan", "essay", "refleksi", "aktivitas"];
+
+/** Rapikan spasi lalu potong teks agar ringkasan blok cukup 1–2 baris. */
+function potong(teks: string, maks = 170): string {
+  const rapi = teks.replace(/\s+/g, " ").trim();
+  return rapi.length > maks ? `${rapi.slice(0, maks - 1)}…` : rapi;
+}
+
+/** Ringkasan isi blok (teks pertanyaan/instruksi/judul) untuk judul feedback per soal. */
+function ringkasBlok(b: LkpdBlock): string {
+  if (b.tipe === "pertanyaan" && b.pertanyaan?.teks) return potong(b.pertanyaan.teks);
+  if (b.tipe === "aktivitas" && b.aktivitas?.instruksi) return potong(b.aktivitas.instruksi);
+  if (b.teks) return potong(b.teks);
+  return potong(b.judul || b.namaBerkas || BLOCK_LABEL[b.tipe]);
+}
+
+/**
+ * Ringkasan jawaban siswa untuk kotak feedback per soal.
+ * `adaFoto` dipakai bila tak ada jawaban teks — pekerjaan tertulis ada di lampiran mission.
+ */
+function ringkasJawaban(b: LkpdBlock, jawaban?: string, adaFoto = false): string {
+  const teks = jawaban?.trim();
+  if (teks) {
+    if (b.tipe === "pertanyaan") {
+      const n = Number(teks);
+      const q = b.pertanyaan;
+      if (q && Number.isInteger(n) && q.opsi[n]) {
+        return `Pilihan siswa: ${String.fromCharCode(65 + n)}. ${potong(q.opsi[n].teks, 140)}`;
+      }
+      return potong(teks, 140);
+    }
+    if (b.tipe === "aktivitas") return "Jawaban aktivitas tersimpan — lihat ringkasan isi kerja di atas.";
+    return potong(teks, 220);
+  }
+  if (adaFoto) return "📷 Foto jawaban — lihat lampiran mission di bawah.";
+  return "Belum dijawab.";
+}
+
+/**
+ * Satu textarea feedback guru UNTUK SOAL INI — nilai awal dari `progres.feedbackBlok`
+ * dan hanya dikirim ke store saat guru menekan "Simpan hasil pemeriksaan".
+ */
+function FeedbackBlok({ id, nilai, onChange }: { id: string; nilai: string; onChange: (teks: string) => void }) {
+  return (
+    <>
+      <label className="label" htmlFor={`fb-blok-${id}`}>💬 Feedback untuk soal ini</label>
+      <textarea
+        id={`fb-blok-${id}`}
+        className="input min-h-[54px]"
+        value={nilai}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="Tulis komentar khusus soal ini: bagian yang sudah tepat, yang perlu diperbaiki, langkah berikutnya…"
+      />
+    </>
+  );
+}
+
 /** Satu content block pada sudut pandang pemeriksa: isi kerja siswa, bukan alur interaktif. */
 function BlokCek({ blok, jawaban }: { blok: LkpdBlock; jawaban?: string }) {
   switch (blok.tipe) {
@@ -238,7 +296,8 @@ function IsiAktivitas({ a, st }: { a: LkpdAktivitas; st: StateAktivitas | null }
 /**
  * Modal cek hasil pekerjaan siswa LKPD — dipanggil guru/admin dari tabel penilaian.
  * Alur pemeriksaan: (1) buka isi kerja per mission (refleksi/essay, jawaban pertanyaan,
- * hasil aktivitas, foto) → (2) tulis feedback & nilai → (3) simpan hasil pemeriksaan
+ * hasil aktivitas, foto) → (2) tulis feedback KESULURUHAN + feedback PER SOAL/BLOK
+ * (kotak 💬 di bawah tiap jawaban siswa) & nilai → (3) simpan hasil pemeriksaan
  * yang sekaligus menandai LKPD "sudah diperiksa". Verifikasi tidak lagi sekali klik
  * dari tabel.
  */
@@ -255,30 +314,58 @@ export function CekKerjaLkpd({ kunci, onClose }: { kunci: KunciCek | null; onClo
 
   const [fb, setFb] = useState(progres?.feedbackGuru || "");
   const [nilaiTeks, setNilaiTeks] = useState(progres?.nilaiGuru != null ? String(progres.nilaiGuru) : "");
+  // Feedback per soal/blok — kunci = id blok, dikirim utuh saat tombol simpan ditekan.
+  const [fbBlok, setFbBlok] = useState<Record<string, string>>(progres?.feedbackBlok || {});
   // Isi ulang form saat baris yang dicek berganti.
   useEffect(() => {
     setFb(progres?.feedbackGuru || "");
     setNilaiTeks(progres?.nilaiGuru != null ? String(progres.nilaiGuru) : "");
+    setFbBlok(progres?.feedbackBlok || {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kunci?.siswaId, kunci?.subtopicId]);
+
+  // Jaring pengaman: bila progres baru terbaca setelah modal terbuka (mis. sinkron
+  // menyusul), isi feedback per soal ikut disinkronkan selama form belum disentuh.
+  useEffect(() => {
+    const tersimpan = progres?.feedbackBlok || {};
+    if (progres && Object.keys(fbBlok).length === 0 && Object.keys(tersimpan).length > 0) {
+      setFbBlok(tersimpan);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [progres?.siswaId, progres?.subtopicId, progres?.feedbackBlok]);
 
   const fbKotor = fb.trim() !== (progres?.feedbackGuru || "").trim();
   const nilaiKotor =
     nilaiTeks.trim() === ""
       ? progres?.nilaiGuru != null
       : progres?.nilaiGuru == null || String(progres.nilaiGuru) !== nilaiTeks.trim();
-  const adaPerubahan = fbKotor || nilaiKotor;
+  // Ada isian feedback per soal yang berbeda dari yang tersimpan (diisi/dihapus)?
+  const fbBlokKotor = (() => {
+    const lama = progres?.feedbackBlok || {};
+    // Gabungan kunci (lama + isian terbaru) tanpa iterasi Set agar kompatibel target build.
+    const semuaKunci = Object.keys({ ...lama, ...fbBlok });
+    return semuaKunci.some((k) => (lama[k] || "").trim() !== (fbBlok[k] || "").trim());
+  })();
+  const adaPerubahan = fbKotor || nilaiKotor || fbBlokKotor;
 
   const simpan = () => {
     if (!kunci) return;
     const n = nilaiTeks.trim();
+    // Feedback per soal: gabung yang tersimpan dengan isian terbaru (kosong = hapus).
+    const blokBaru: Record<string, string> = { ...(progres?.feedbackBlok || {}) };
+    for (const [k, v] of Object.entries(fbBlok)) {
+      if (v.trim()) blokBaru[k] = v.trim();
+      else delete blokBaru[k];
+    }
     periksaLkpd(kunci.siswaId, kunci.subtopicId, {
       feedback: fb.trim(),
+      feedbackBlok: blokBaru,
       nilai: n === "" ? null : Math.max(0, Math.min(100, Math.round(Number(n) || 0))),
       verifikasi: true,
     });
     setFb(fb.trim());
     setNilaiTeks(n === "" ? "" : n);
+    setFbBlok(blokBaru);
   };
 
   if (!kunci || !topik || !sub) return null;
@@ -311,7 +398,12 @@ export function CekKerjaLkpd({ kunci, onClose }: { kunci: KunciCek | null; onClo
         <p className="muted">Sub bab ini belum punya mission.</p>
       ) : !progres ? (
         <p className="muted">Siswa belum mengerjakan sub bab ini — belum ada progres tersimpan.</p>
-      ) : null}
+      ) : (
+        <p className="muted mb-3">
+          💬 Tulis <b>feedback per soal</b> pada kotak di bawah tiap jawaban siswa — feedback per blok &amp; keseluruhan
+          tersimpan bersama tombol <b>💾 Simpan hasil pemeriksaan</b> di bawah.
+        </p>
+      )}
 
       {/* Isi kerja per mission */}
       <div className="space-y-3">
@@ -330,7 +422,35 @@ export function CekKerjaLkpd({ kunci, onClose }: { kunci: KunciCek | null; onClo
                 {m.blok.length === 0 ? (
                   <p className="text-[13px] text-ink-faint">Mission tanpa konten.</p>
                 ) : (
-                  m.blok.map((b) => <BlokCek key={b.id} blok={b} jawaban={progres?.jawaban[b.id]} />)
+                  m.blok.map((b) => {
+                    const jawab = progres?.jawaban[b.id];
+                    const adaFoto = (progres?.lampiran?.[m.id]?.length || 0) > 0;
+                    const fbTersimpan = progres?.feedbackBlok?.[b.id] || "";
+                    const adaJawabTeks = Boolean(jawab && jawab.trim());
+                    // Feedback per soal hanya untuk blok yang menampilkan jawaban siswa —
+                    // atau blok yang sudah pernah diberi feedback guru (agar bisa diedit ulang).
+                    if (!adaJawabTeks && !fbTersimpan && !(adaFoto && TIPE_JAWAB.includes(b.tipe))) {
+                      return <BlokCek key={b.id} blok={b} jawaban={jawab} />;
+                    }
+                    return (
+                      <div key={b.id}>
+                        <BlokCek blok={b} jawaban={jawab} />
+                        <div className="rounded-lg border border-dashed border-primary-200 bg-primary-50/40 px-3.5 py-2.5">
+                          <p className="text-[12.5px] font-medium text-ink-soft line-clamp-2 mb-1.5">
+                            🧾 <span className="text-ink-faint">Ringkasan soal:</span> {ringkasBlok(b)}
+                          </p>
+                          <p className="text-[12.5px] text-ink-muted bg-white border border-line rounded-lg px-3 py-1.5 mb-2">
+                            <b>Jawaban siswa:</b> {ringkasJawaban(b, jawab, adaFoto)}
+                          </p>
+                          <FeedbackBlok
+                            id={b.id}
+                            nilai={fbBlok[b.id] ?? fbTersimpan}
+                            onChange={(teks) => setFbBlok((prev) => ({ ...prev, [b.id]: teks }))}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })
                 )}
                 {(progres?.lampiran?.[m.id]?.length || 0) > 0 ? (
                   <div>
@@ -357,7 +477,10 @@ export function CekKerjaLkpd({ kunci, onClose }: { kunci: KunciCek | null; onClo
 
       {/* Panel hasil pemeriksaan: feedback + nilai + simpan */}
       <div className="mt-4 rounded-xl border border-line bg-wash/50 px-3.5 py-3 border-t-0">
-        <p className="text-[13.5px] font-semibold mb-2">📝 Hasil pemeriksaan</p>
+        <div className="flex flex-wrap items-center gap-2 mb-2">
+          <p className="text-[13.5px] font-semibold">📝 Hasil pemeriksaan</p>
+          {fbBlokKotor ? <Badge tone="amber">💬 Feedback per soal belum disimpan</Badge> : null}
+        </div>
         <div className="flex flex-wrap items-start gap-3">
           <div>
             <label className="label" htmlFor="nilai-guru-lkpd">Nilai (0–100)</label>
@@ -384,16 +507,16 @@ export function CekKerjaLkpd({ kunci, onClose }: { kunci: KunciCek | null; onClo
           </div>
         </div>
         <p className="text-[12.5px] text-ink-muted mt-2">
-          Kosongkan nilai bila ingin memakai nilai hitungan sistem <b>{nilai ?? "—"}</b>. Feedback tampil di siswa setelah disimpan;
-          menyimpan hasil pemeriksaan menandai LKPD <b>sudah diperiksa</b>.
+          Kosongkan nilai bila ingin memakai nilai hitungan sistem <b>{nilai ?? "—"}</b>. Feedback keseluruhan <b>dan feedback
+          per soal</b> tampil di siswa setelah disimpan; menyimpan hasil pemeriksaan menandai LKPD <b>sudah diperiksa</b>.
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-line pt-3">
           <p className="text-[13px] text-ink-muted">
             {verifikasi
               ? `Sudah diperiksa${progres?.diperiksaPada ? ` (${fmtDateTime(progres.diperiksaPada)})` : ""}${adaPerubahan ? " · ada perubahan belum disimpan" : ""}.`
               : progres?.dikumpulkan
-                ? "Belum diperiksa — isi kerja di atas belum diberi keputusan."
-                : "Siswa masih mengerjakan — keputusan bisa disimpan nanti."}
+                ? `Belum diperiksa — isi kerja di atas belum diberi keputusan.${adaPerubahan ? " · ada perubahan belum disimpan" : ""}`
+                : `Siswa masih mengerjakan — keputusan bisa disimpan nanti.${adaPerubahan ? " · ada perubahan belum disimpan" : ""}`}
           </p>
           <div className="ml-auto flex flex-wrap gap-2">
             <button className="btn-ghost !py-2 !text-[13px]" onClick={onClose}>Tutup</button>

@@ -48,6 +48,8 @@ export function TaskModal({
   const [durasi, setDurasi] = useState("45");
   const [bukaLokal, setBukaLokal] = useState("");
   const [tutupLokal, setTutupLokal] = useState("");
+  /** Kunci manual guru/admin — tampil sebagai sakelar agar keadaannya terlihat jelas. */
+  const [terkunci, setTerkunci] = useState(false);
   const [qs, setQs] = useState<Question[]>([]);
   const [wasOpen, setWasOpen] = useState(false);
   if (open && !wasOpen) {
@@ -59,6 +61,7 @@ export function TaskModal({
     setDurasi(initial?.durasiMenit ? String(initial.durasiMenit) : "45");
     setBukaLokal(toLocalInput(initial?.bukaAt || null));
     setTutupLokal(toLocalInput(initial?.tutupAt || null));
+    setTerkunci(Boolean(initial?.terkunci));
     setQs(initial?.questions?.length ? initial.questions.map((q) => ({ ...q, opsi: q.opsi ? [...q.opsi] : q.opsi })) : [blankQ()]);
   }
   if (!open && wasOpen) setWasOpen(false);
@@ -75,6 +78,9 @@ export function TaskModal({
   const totalBobot = qs.reduce((s, q) => s + (Number.isFinite(q.bobot) ? q.bobot : 0), 0);
   const bobotLebih = totalBobot > 100;
   const waktuInvalid = !!(bukaLokal && tutupLokal && new Date(tutupLokal).getTime() <= new Date(bukaLokal).getTime());
+  /** Jadwal tutup sudah lewat = evaluasi tetap tertutup meski kunci manual dilepas. */
+  const tutupLewat = !!(tutupLokal && new Date(tutupLokal).getTime() <= Date.now());
+  const bukaBelumTiba = !!(bukaLokal && new Date(bukaLokal).getTime() > Date.now());
   const bisaSimpan = !!judul.trim() && qs.length > 0 && !bobotLebih && !waktuInvalid;
 
   return (
@@ -118,6 +124,22 @@ export function TaskModal({
             {waktuInvalid ? (
               <p role="alert" className="sm:col-span-3 text-[12.5px] text-red-600">⚠ Waktu dikunci harus setelah waktu dibuka.</p>
             ) : null}
+            {/* Penyebab umum "sudah dibuka tapi siswa belum bisa": jadwal yang menahan. */}
+            {tutupLewat ? (
+              <p role="alert" className="sm:col-span-3 text-[12.5px] text-amber-700">
+                ⚠ Waktu <b>dikunci otomatis sudah lewat</b> — evaluasi tetap tertutup untuk siswa. Kosongkan isinya bila ingin dibuka kembali.
+              </p>
+            ) : null}
+            {bukaBelumTiba && !terkunci ? (
+              <p role="alert" className="sm:col-span-3 text-[12.5px] text-amber-700">
+                ⚠ Waktu <b>buka otomatis belum tiba</b> — siswa masih melihat “Belum dibuka” sampai jadwal itu lewat.
+              </p>
+            ) : null}
+            <label className="sm:col-span-3 flex items-center gap-2 text-[13px] rounded-lg border border-line px-3 py-2">
+              <input type="checkbox" className="accent-[#7209B7]" checked={terkunci} onChange={(e) => setTerkunci(e.target.checked)} />
+              <b>Terkunci manual</b>
+              <span className="text-ink-muted">— siswa tidak bisa mengerjakan sampai guru/admin menekan “Buka kunci &amp; buka sekarang”.</span>
+            </label>
           </div>
         ) : null}
         <div className="space-y-2.5">
@@ -198,7 +220,7 @@ export function TaskModal({
               durasiMenit: tipe === "evaluasi" ? durasiBersih : null,
               bukaAt: bukaLokal ? new Date(bukaLokal).toISOString() : (initial?.bukaAt || nowIso()),
               tutupAt: tutupLokal ? new Date(tutupLokal).toISOString() : null,
-              acakSoal: tipe !== "lkpd", kunciTab: tipe === "evaluasi", terkunci: initial?.terkunci, createdBy: initial?.createdBy || author,
+              acakSoal: tipe !== "lkpd", kunciTab: tipe === "evaluasi", terkunci: tipe === "evaluasi" ? terkunci : initial?.terkunci, createdBy: initial?.createdBy || author,
               questions: bobotAkhir.filter((q) => q.teks.trim() || (q.gambar && q.gambar.length)),
             }, !initial);
           }}

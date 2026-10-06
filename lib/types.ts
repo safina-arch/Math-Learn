@@ -6,6 +6,8 @@ export interface User {
   email: string;
   role: Role;
   kelas: string;
+  /** Stempel waktu revisi terakhir — dipakai server menggabungkan tulisan klien (lindungi data dari tertimpa). */
+  revisiAt?: string;
   /** Nomor induk siswa — diisi manual oleh admin. */
   nisn?: string;
   /** Tempat, tanggal lahir — format "Bandung, 2011-08-12". */
@@ -35,6 +37,7 @@ export interface Material {
   fileName?: string;
   createdBy: string;
   createdAt: string;
+  revisiAt?: string;
 }
 
 export type AssignmentType = "lkpd" | "latihan" | "evaluasi";
@@ -67,6 +70,7 @@ export interface Assignment {
   kunciTab: boolean;
   /** Dikunci admin: siswa tidak bisa mengerjakan evaluasi sampai dibuka lagi. */
   terkunci?: boolean;
+  revisiAt?: string;
   createdBy: string;
   questions: Question[];
 }
@@ -86,6 +90,15 @@ export interface Submission {
   feedbackAi: Record<string, { skor: number; feedback: string; draft: boolean }>;
   feedbackGuru: string;
   status: "dinilai" | "menunggu" | "draf-ai";
+  /**
+   * Tanda bahwa guru/admin BENAR-BENAR sudah memeriksa & menerbitkan hasil
+   * (diisi saat klik "Setujui & terbitkan"). Tanpa tanda ini statusnya
+   * "Belum diperiksa" — nilai/penilaian otomatis sistem bukan bukti pemeriksaan.
+   */
+  diperiksa?: boolean;
+  diperiksaPada?: string;
+  /** Stempel waktu revisi terakhir — server menggabungkan tulisan klien terbaru menang. */
+  revisiAt?: string;
   submittedAt: string;
   cheatCount: number;
 }
@@ -125,6 +138,7 @@ export interface CheatLog {
 export interface AcademicEvent {
   id: string;
   judul: string;
+  revisiAt?: string;
   /** YYYY-MM-DD untuk agenda; kosong ("") untuk jadwal pelajaran. */
   tanggal: string;
   deskripsi: string;
@@ -263,6 +277,7 @@ export interface LkpdSubtopic {
 export interface LkpdTopic {
   id: string;
   judul: string;
+  revisiAt?: string;
   deskripsi: string;
   /** Emoji ikon kartu (mis. ⚖️ 📐 🧮). */
   ikon: string;
@@ -297,6 +312,11 @@ export interface LkpdProgress {
   dikumpulkan?: boolean;
   /** Komentar/feedback guru atas hasil pemeriksaan — dilihat siswa. */
   feedbackGuru?: string;
+  /**
+   * Feedback guru PER SOAL/BLOK (key = id blok) — guru menulis catatan terpisah
+   * untuk tiap pertanyaan/aktivitas, bukan hanya satu paragraf keseluruhan.
+   */
+  feedbackBlok?: Record<string, string>;
   /** Waktu guru menyelesaikan pemeriksaan (kosong bila belum). */
   diperiksaPada?: string;
   /** Ada jawaban terbuka (essay/refleksi) yang belum bisa dinilai otomatis → menunggu guru. */

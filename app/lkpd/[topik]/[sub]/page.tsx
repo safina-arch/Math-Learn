@@ -7,6 +7,7 @@ import { AppShell, Guard } from "@/components/shell";
 import { Badge, Empty, Modal, Progress } from "@/components/ui";
 import { BlokRenderer } from "@/components/lkpd/blocks";
 import { AnswerUpload } from "@/components/answer-upload";
+import { PengawasKecurangan } from "@/components/pengawas-kecurangan";
 import { useStore } from "@/lib/store";
 import { cariProgress, missionTerjawab, nilaiSubtopic, progresSubtopic } from "@/lib/lkpd";
 
@@ -28,6 +29,12 @@ export default function JourneyPage() {
   const [raya, setRaya] = useState(false);
   const [kurang, setKurang] = useState<string[]>([]);
   const initRef = useRef(false);
+  // Pengawas kecurangan LKPD: hitungan pelanggaran, waktu mulai, penanda refresh & selesai.
+  const cheatRef = useRef(0);
+  const mulaiRef = useRef(Date.now());
+  const refreshRef = useRef(false);
+  const selesaiRef = useRef(false);
+  const mulaiInitRef = useRef(false);
 
   // Mulai dari mission pertama yang belum selesai — cukup sekali agar tidak melompat saat sinkron.
   useEffect(() => {
@@ -36,6 +43,15 @@ export default function JourneyPage() {
     const belum = sub.missions.findIndex((m) => !prog?.missions.includes(m.id));
     setIdx(belum >= 0 ? belum : 0);
   }, [ready, sub, prog]);
+
+  // Waktu mulai pengerjaan untuk laporan pengawas — pakai updatedAt progres bila ada
+  // (sekali saja saat progres terbaca pertama kali, agar kolom "menit ke-N" wajar).
+  useEffect(() => {
+    if (!ready || mulaiInitRef.current) return;
+    mulaiInitRef.current = true;
+    const t = prog?.updatedAt ? Date.parse(prog.updatedAt) : 0;
+    mulaiRef.current = t || Date.now();
+  }, [ready, prog]);
 
   if (!ready) return null;
 
@@ -62,8 +78,16 @@ export default function JourneyPage() {
   const boleh = (i: number) => i <= batas;
   // LKPD sudah disubmit → terkunci (sekali kerja), data pengerjaan pertama tetap ada.
   const terkunci = Boolean(prog?.dikumpulkan);
+  // Pengawas kecurangan berhenti menghitung begitu LKPD dikumpulkan.
+  selesaiRef.current = terkunci;
   // Kunci/pembahasan hanya bila sudah dikumpulkan DAN guru/admin mengizinkan.
   const bukaKunci = Boolean(prog?.dikumpulkan && topik.kunciTerbuka);
+  // Feedback guru PER SOAL boleh tampil setelah dikumpulkan ATAU setelah guru menulisnya
+  // (kunci jawaban tetap mengikuti aturan lama: dikumpulkan + kunciTerbuka).
+  const adaFbBlok = Boolean(
+    prog?.feedbackBlok && Object.values(prog.feedbackBlok).some((v) => Boolean(v && v.trim())),
+  );
+  const bolehFbBlok = Boolean(prog?.dikumpulkan) || adaFbBlok;
   const nilaiAkhir = nilaiSubtopic(sub, prog);
 
   const tandai = () => {
@@ -107,6 +131,17 @@ export default function JourneyPage() {
     <AppShell>
       <Guard allow={["siswa", "guru", "admin"]}>
         <div>
+          {/* Pengawas kecurangan: peringatan real-time saat keluar tab selama LKPD belum dikumpulkan.
+              `catatNavigasi` sengaja tidak dipasang (false) untuk LKPD. */}
+          <PengawasKecurangan
+            aktif={Boolean(prog) && !prog?.dikumpulkan}
+            evaluationId={`lkpd:${sub.id}`}
+            jenis="lkpd"
+            countRef={cheatRef}
+            mulaiRef={mulaiRef}
+            refreshRef={refreshRef}
+            selesaiRef={selesaiRef}
+          />
           <div className="flex flex-wrap items-center gap-2 text-[13px] text-ink-muted">
             <Link href="/lkpd" className="hover:text-primary">LKPD</Link>
             <span>/</span>
@@ -211,16 +246,27 @@ export default function JourneyPage() {
                 <Empty title="Mission ini belum berisi konten" desc={user?.role !== "siswa" ? "Buka mode Kelola untuk menambahkan content block." : "Konten sedang disiapkan guru."} />
               ) : (
                 <div className="space-y-3.5">
-                  {m.blok.map((b) => (
-                    <BlokRenderer
-                      key={b.id}
-                      blok={b}
-                      jawaban={prog?.jawaban?.[b.id]}
-                      onSimpan={(t) => simpanJawabanLkpd(sub.id, b.id, t)}
-                      readOnly={terkunci}
-                      bukaKunci={bukaKunci}
-                    />
-                  ))}
+                  {m.blok.map((b) => {
+                    // 💬 Feedback guru per soal — tampil tepat di bawah blok/jawaban yang
+                    // bersangkutan, hanya setelah LKPD dikumpulkan ATAU setelah guru menulisnya.
+                    const fb = bolehFbBlok ? prog?.feedbackBlok?.[b.id] : undefined;
+                    return (
+                      <div key={b.id}>
+                        <BlokRenderer
+                          blok={b}
+                          jawaban={prog?.jawaban?.[b.id]}
+                          onSimpan={(t) => simpanJawabanLkpd(sub.id, b.id, t)}
+                          readOnly={terkunci}
+                          bukaKunci={bukaKunci}
+                        />
+                        {fb && fb.trim() ? (
+                          <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-[13px] text-ink-soft">
+                            💬 <b>Feedback guru:</b> {fb}
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
 

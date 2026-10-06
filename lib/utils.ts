@@ -124,8 +124,9 @@ export function cheatTone(tipe: string): "red" | "blue" {
 
 /**
  * Status tugas dari kacamata guru/admin — berbasis APAKA GURU SUDAH MEMERIKSA,
- * bukan sekadar ada nilai. Kiriman yang nilainya masih draf AI (belum diterbitkan
- * guru) tetap "Belum diperiksa".
+ * bukan sekadar ada nilai. Penilaian otomatis sistem (PG dinilai sendiri, nilai
+ * sementara) BUKAN bukti pemeriksaan: tanpa tanda `diperiksa` / catatan guru,
+ * kiriman tetap "Belum diperiksa".
  */
 export type StatusTugas = "belum" | "belum-diperiksa" | "sudah";
 export const STATUS_TUGAS_META: Record<StatusTugas, { label: string; tone: "gray" | "amber" | "green" }> = {
@@ -133,9 +134,13 @@ export const STATUS_TUGAS_META: Record<StatusTugas, { label: string; tone: "gray
   "belum-diperiksa": { label: "Belum diperiksa", tone: "amber" },
   sudah: { label: "Sudah diperiksa", tone: "green" },
 };
-export function statusTugas(sub?: { status: string; feedbackAi?: Record<string, { draft: boolean }> } | null): StatusTugas {
+export function statusTugas(
+  sub?: { status: string; feedbackGuru?: string; diperiksa?: boolean; feedbackAi?: Record<string, { draft: boolean }> } | null,
+): StatusTugas {
   if (!sub) return "belum";
-  if (sub.status !== "dinilai") return "belum-diperiksa";
+  // Bukti pemeriksaan: guru/admin menandai diperiksa ATAU menulis catatan untuk siswa.
+  const adaBukti = sub.diperiksa === true || Boolean((sub.feedbackGuru || "").trim());
+  if (!adaBukti) return "belum-diperiksa";
   const drafTersisa = Object.values(sub.feedbackAi || {}).some((f) => f && f.draft);
   return drafTersisa ? "belum-diperiksa" : "sudah";
 }
@@ -218,6 +223,25 @@ export function jendelaEvaluasi(a: { bukaAt?: string | null; tutupAt?: string | 
   if (a.bukaAt && Date.parse(a.bukaAt) > now) return "belum-buka";
   if (a.tutupAt && Date.parse(a.tutupAt) <= now) return "lewat-waktu";
   return "buka";
+}
+
+/**
+ * Tombol "Buka kunci" (guru/admin) — siswa harus LANGSUNG bisa mengerjakan.
+ * Masalah lamanya: menekan buka kunci hanya melepas `terkunci`, padahal jadwal
+ * `bukaAt` masih di masa depan atau `tutupAt` sudah lewat, sehingga layar siswa
+ * tetap "Belum dibuka" / "Ditutup otomatis". Di sini kedua jadwal dinormalkan
+ * bersamaan dengan membuka kuncinya.
+ */
+export function bukaEvaluasi(a: Assignment): Assignment {
+  const now = Date.now();
+  return {
+    ...a,
+    terkunci: false,
+    // Jadwal buka belum tiba → lepas, agar tidak menahan pengerjaan.
+    bukaAt: a.bukaAt && Date.parse(a.bukaAt) > now ? null : a.bukaAt,
+    // Jadwal tutup sudah lewat → lepas (guru sedang membuka kembali evaluasinya).
+    tutupAt: a.tutupAt && Date.parse(a.tutupAt) <= now ? null : a.tutupAt,
+  };
 }
 
 /** Ringkasan tiga status tugas di seluruh tugas: belum mengerjakan / belum diperiksa / sudah diperiksa. */

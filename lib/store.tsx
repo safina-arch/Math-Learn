@@ -52,6 +52,8 @@ interface Store {
   deleteAssignment: (id: string) => void;
   addSubmission: (s: Submission) => void;
   updateSubmission: (id: string, patch: Partial<Submission>) => void;
+  /** Hapus kiriman (guru/admin) — memberi siswa kesempatan mengerjakan ulang. */
+  deleteSubmission: (id: string) => void;
   addAnnouncement: (a: Announcement) => void;
   deleteAnnouncement: (id: string) => void;
   addNotification: (n: Omit<Notification, "id" | "createdAt" | "dibaca">) => void;
@@ -76,7 +78,7 @@ interface Store {
   periksaLkpd: (
     siswaId: string,
     subtopicId: string,
-    patch: { feedback?: string; nilai?: number | null; verifikasi?: boolean },
+    patch: { feedback?: string; feedbackBlok?: Record<string, string>; nilai?: number | null; verifikasi?: boolean },
   ) => void;
   /** Guru/admin menetapkan status verifikasi LKPD (nilai dihitung dari benar/salah jawaban). */
   verifikasiLkpd: (siswaId: string, subtopicId: string, verifikasi: boolean) => void;
@@ -126,49 +128,84 @@ function sedangDitulis(resource: string): boolean {
  * Antrean tulis ulang: POST yang gagal karena jaringan tidak boleh hilang diam-diam
  * (penyebab nilai siswa tidak sampai ke guru/admin). Resource dicoba lagi pada
  * siklus sinkron berikutnya. Gagal permanen (400/403) tidak diulang.
+ * `hapus` = id yang sengaja dihapus guru/admin (tombstone) supaya tidak hidup lagi.
  */
-const antreanTulis: Record<string, { data: unknown[]; role?: string }> = {};
+type Kiriman = { data: unknown[]; role?: string; hapus?: string[] };
+const antreanTulis: Record<string, Kiriman> = {};
+/** true bila POST untuk resource ini sedang berjalan — mencegah tulisan menumpuk & datang terbalik. */
+const sedangKirim: Record<string, boolean> = {};
+/** Jumlah kegagalan beruntun per resource → jeda kirim (backoff) agar server tidak dibanjiri. */
+const gagalBeruntun: Record<string, number> = {};
 
 /** Lapor galat sinkronisasi terakhir ke provider (agar gagal POST tidak diam-diam). */
 let laporSync: ((pesan: string | null) => void) | null = null;
 
-async function persistShared(resource: string, data: unknown[], role?: string) {
-  pendingUntil[resource] = Date.now() + 5000;
-  const kirim = () =>
-    fetch("/api/sync", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ resource, data, role }),
-      keepalive: true,
-    });
+const tidur = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Kirim perubahan ke server. Payload SELALU yang terbaru (tulis lama tidak pernah
+ * menimpa tulisan baru) dan hanya ada satu POST per resource pada satu waktu —
+ * penting saat >50 pengguna menulis bersamaan.
+ */
+async function persistShared(resource: string, data: unknown[], role?: string, hapus?: string[]) {
+  const payload: Kiriman = { data, role, hapus };
+  antreanTulis[resource] = payload;
+  if (sedangKirim[resource]) return;
+  sedangKirim[resource] = true;
   try {
-    let res: Response | null = null;
-    for (let i = 0; i < 2; i++) {
-      res = await kirim().catch(() => null);
-      if (res?.ok) break;
-      await new Promise((r) => setTimeout(r, 800));
-    }
-    if (res?.ok) {
-      // PERPANJANG: GET yang sudah terlanjur berangkat sebelum POST selesai
-      // tiba 1–2 detik kemudian dengan data lama — jangan sampai menimpa edit.
-      pendingUntil[resource] = Date.now() + 3000;
-      // Hapus dari antrean hanya bila yang baru saja sukses adalah payload yang
-      // sama — tulisan lebih baru (antrean berbeda) tetap dipertahankan.
-      if (antreanTulis[resource]?.data === data) delete antreanTulis[resource];
-      laporSync?.(null);
-    } else if (!res || res.status >= 500) {
-      antreanTulis[resource] = { data, role };
-      laporSync?.(`${resource}: ${res ? `HTTP ${res.status}` : "jaringan gagal"}`);
+    while (antreanTulis[resource]) {
+      const kiriman = antreanTulis[resource]!;
+      delete antreanTulis[resource];
+      pendingUntil[resource] = Date.now() + 5000;
+      // Backoff ringan: makin sering gagal, makin lama jeda → tidak membanjiri server.
+      const mundur = gagalBeruntun[resource] || 0;
+      if (mundur) await tidur(Math.min(8000, 500 * 2 ** Math.min(mundur, 4)));
+      let res: Response | null = null;
+      let sukses = false;
+      for (let i = 0; i < 2 && !sukses; i++) {
+        res = await fetch("/api/sync", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ resource, data: kiriman.data, role: kiriman.role, hapus: kiriman.hapus }),
+          keepalive: true,
+        }).catch(() => null);
+        sukses = Boolean(res?.ok);
+        if (!sukses && res && res.status >= 400 && res.status < 500 && res.status !== 429) break; // ditolak permanen
+        if (!sukses) await tidur(800);
+      }
+      if (sukses) {
+        gagalBeruntun[resource] = 0;
+        // PERPANJANG: GET yang sudah terlanjur berangkat sebelum POST selesai
+        // tiba 1–2 detik kemudian dengan data lama — jangan sampai menimpa edit.
+        pendingUntil[resource] = Date.now() + 3000;
+        laporSync?.(null);
+      } else {
+        gagalBeruntun[resource] = (gagalBeruntun[resource] || 0) + 1;
+        antreanTulis[resource] = kiriman; // dicoba ulang pada siklus sinkron berikutnya
+        laporSync?.(`${resource}: ${res ? `HTTP ${res.status}` : "jaringan gagal"}`);
+        break;
+      }
     }
   } catch {
-    antreanTulis[resource] = { data, role };
     laporSync?.(`${resource}: gagal terhubung ke server`);
+  } finally {
+    sedangKirim[resource] = false;
   }
 }
 
 /** Coba ulang seluruh resource yang gagal tadi — dipanggil tiap siklus sinkron. */
 function tulisGagal() {
-  for (const [resource, w] of Object.entries(antreanTulis)) void persistShared(resource, w.data, w.role);
+  for (const [resource, w] of Object.entries(antreanTulis)) void persistShared(resource, w.data, w.role, w.hapus);
+}
+
+/** Perbandingan data ringan: setState hanya saat isi benar-benar berubah (hemat render 50+ klien). */
+function isiSama(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  try {
+    return JSON.stringify(a) === JSON.stringify(b);
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -247,7 +284,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!ready) return;
     let active = true;
+    let siklus = 0;
     async function syncShared() {
+      // Tab di latar belakang tidak perlu membanjiri server (uji serentak >50 siswa):
+      // begitu tab aktif kembali, sinkron langsung dijalankan satu kali.
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      siklus += 1;
       tulisGagal(); // resource yang POST-nya gagal tadi dicoba ulang
       try {
         const response = await fetch("/api/sync", { cache: "no-store" });
@@ -255,18 +297,19 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           const result = await response.json();
           if (result.configured && result.data) {
             const data = result.data as Record<string, unknown>;
-            if (Array.isArray(data.materials) && !sedangDitulis("materials")) setMaterials(data.materials as Material[]);
-            if (Array.isArray(data.assignments) && !sedangDitulis("assignments")) setAssignments(data.assignments as Assignment[]);
-            if (Array.isArray(data.submissions) && !sedangDitulis("submissions")) setSubmissions(data.submissions as Submission[]);
-            if (Array.isArray(data.announcements) && !sedangDitulis("announcements")) setAnnouncements(data.announcements as Announcement[]);
-            if (Array.isArray(data.notifications) && !sedangDitulis("notifications")) setNotifications(data.notifications as Notification[]);
-            if (Array.isArray(data.cheatLogs) && !sedangDitulis("cheatLogs")) setCheatLogs(data.cheatLogs as CheatLog[]);
-            if (Array.isArray(data.events) && !sedangDitulis("events")) setEvents(data.events as AcademicEvent[]);
-            if (Array.isArray(data.users) && !sedangDitulis("users")) setAccounts(data.users as Account[]);
+            // setState hanya bila isi berubah → tidak ada render ulang tiap 5 detik.
+            if (Array.isArray(data.materials) && !sedangDitulis("materials")) setMaterials((p) => (isiSama(p, data.materials) ? p : (data.materials as Material[])));
+            if (Array.isArray(data.assignments) && !sedangDitulis("assignments")) setAssignments((p) => (isiSama(p, data.assignments) ? p : (data.assignments as Assignment[])));
+            if (Array.isArray(data.submissions) && !sedangDitulis("submissions")) setSubmissions((p) => (isiSama(p, data.submissions) ? p : (data.submissions as Submission[])));
+            if (Array.isArray(data.announcements) && !sedangDitulis("announcements")) setAnnouncements((p) => (isiSama(p, data.announcements) ? p : (data.announcements as Announcement[])));
+            if (Array.isArray(data.notifications) && !sedangDitulis("notifications")) setNotifications((p) => (isiSama(p, data.notifications) ? p : (data.notifications as Notification[])));
+            if (Array.isArray(data.cheatLogs) && !sedangDitulis("cheatLogs")) setCheatLogs((p) => (isiSama(p, data.cheatLogs) ? p : (data.cheatLogs as CheatLog[])));
+            if (Array.isArray(data.events) && !sedangDitulis("events")) setEvents((p) => (isiSama(p, data.events) ? p : (data.events as AcademicEvent[])));
+            if (Array.isArray(data.users) && !sedangDitulis("users")) setAccounts((p) => (isiSama(p, data.users) ? p : (data.users as Account[])));
             // Katalog LKPD: server menang — tapi bila barisnya belum pernah ada,
             // guru/admin mengunggah miliknya agar edit tidak terkunci di localStorage.
             if (Array.isArray(data.lkpdTopics) && !sedangDitulis("lkpdTopics")) {
-              setLkpdTopics(data.lkpdTopics as LkpdTopic[]);
+              setLkpdTopics((p) => (isiSama(p, data.lkpdTopics) ? p : (data.lkpdTopics as LkpdTopic[])));
             } else if (!Array.isArray(data.lkpdTopics) && !sedangDitulis("lkpdTopics") && lokalRef.current.role !== "siswa" && lokalRef.current.topik.length) {
               void persistShared("lkpdTopics", lokalRef.current.topik, lokalRef.current.role);
             }
@@ -276,9 +319,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
             if (Array.isArray(data.lkpdProgress) && !sedangDitulis("lkpdProgress")) {
               const serverRows = data.lkpdProgress as LkpdProgress[];
               const gabung = gabungProgress(serverRows, lokalRef.current.progress);
-              setLkpdProgress(gabung);
-              if (JSON.stringify(gabung) !== JSON.stringify(serverRows)) {
-                void persistShared("lkpdProgress", gabung, lokalRef.current.role);
+              if (!isiSama(gabung, serverRows)) {
+                setLkpdProgress(gabung);
+                if (JSON.stringify(gabung) !== JSON.stringify(serverRows)) {
+                  void persistShared("lkpdProgress", gabung, lokalRef.current.role);
+                }
               }
             } else if (!Array.isArray(data.lkpdProgress) && !sedangDitulis("lkpdProgress") && lokalRef.current.progress.length) {
               void persistShared("lkpdProgress", lokalRef.current.progress, lokalRef.current.role);
@@ -288,39 +333,52 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       } catch {
         // Fallback localStorage digunakan saat offline atau Supabase belum tersedia.
       }
-      try {
-        const p = await fetch("/api/presence", { cache: "no-store" });
-        if (p.ok && active) {
-          const pj = await p.json();
-          if (pj.configured && Array.isArray(pj.data)) setPresence(pj.data as Presence[]);
+      // Presence cukup tiap 3 siklus (15 detik) — heartbeat sudah mengirim juga.
+      if (siklus % 3 === 1) {
+        try {
+          const p = await fetch("/api/presence", { cache: "no-store" });
+          if (p.ok && active) {
+            const pj = await p.json();
+            if (pj.configured && Array.isArray(pj.data)) setPresence((prev) => (isiSama(prev, pj.data) ? prev : (pj.data as Presence[])));
+          }
+        } catch {
+          // Presence hanya tersedia bila Supabase dikonfigurasi.
         }
-      } catch {
-        // Presence hanya tersedia bila Supabase dikonfigurasi.
       }
     }
     void syncShared();
     const timer = window.setInterval(syncShared, 5000);
-    return () => { active = false; window.clearInterval(timer); };
+    // Tab kembali aktif → sinkron langsung (tanpa menunggu 5 detik) agar jendela
+    // evaluasi/kunci yang baru dibuka guru segera terbaca siswa.
+    const onVis = () => { if (document.visibilityState === "visible") void syncShared(); };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVis);
+    };
   }, [ready]);
 
-  // Hasil siswa & laporan kecurangan wajib terkait dengan tugasnya. Data lama yang
-  // tugasnya sudah dihapus (mis. evaluasi dihapus sebelum aturan ini) ikut dibuang
-  // agar tidak muncul sebagai baris tanpa judul di halaman hasil.
-  useEffect(() => {
-    if (!ready || assignments.length === 0) return;
-    const role = (impersonating || user)?.role;
-    const ids = new Set(assignments.map((a) => a.id));
-    const subNext = submissions.filter((s) => ids.has(s.assignmentId));
-    if (subNext.length !== submissions.length) {
-      setSubmissions(subNext);
-      void persistShared("submissions", subNext, role);
+  /** Tulis localStorage per kunci: hanya saat isinya berubah & gagal per kunci tidak mematikan sisanya. */
+  const localTerakhir = useRef<Record<string, string>>({});
+  const simpanLocal = (k: string, v: unknown) => {
+    try {
+      const s = JSON.stringify(v);
+      if (localTerakhir.current[k] === s) return;
+      localTerakhir.current[k] = s;
+      localStorage.setItem(k, s);
+    } catch {
+      // Kuota penuh → data terbaru tetap ada di memori & terkirim ke server.
     }
-    const cheatNext = cheatLogs.filter((c) => ids.has(c.evaluationId));
-    if (cheatNext.length !== cheatLogs.length) {
-      setCheatLogs(cheatNext);
-      void persistShared("cheatLogs", cheatNext, role);
-    }
-  }, [ready, assignments, submissions, cheatLogs, user, impersonating]);
+  };
+
+  /**
+   * Bekas "buang kiriman yatim" DIHAPUS: efek itu menyaring submissions/cheatLogs
+   * memakai daftar tugas SEBELUM data server masuk (masa muat awal), lalu menuliskan
+   * daftar yang terpotong kembali ke server — hasil latihan siswa hilang permanen
+   * (terutama saat >50 perangkat menulis bersamaan). Kiriman kini disimpan utuh;
+   * baris tanpa tugas ditampilkan dengan label "Tugas sudah dihapus" di halaman guru.
+   */
 
   // Heartbeat kehadiran → ditampilkan sebagai "pengguna aktif" di halaman admin.
   useEffect(() => {
@@ -348,27 +406,25 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!ready) return;
-    try {
-      localStorage.setItem(`${KEY}:user`, JSON.stringify(user));
-      localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(accounts));
-      localStorage.setItem(MATERIALS_KEY, JSON.stringify(materials));
-      localStorage.setItem(ASSIGNMENTS_KEY, JSON.stringify(assignments));
-      localStorage.setItem(SUBMISSIONS_KEY, JSON.stringify(submissions));
-      localStorage.setItem(ANNOUNCEMENTS_KEY, JSON.stringify(announcements));
-      localStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify(notifications));
-      localStorage.setItem(CHEAT_KEY, JSON.stringify(cheatLogs));
-      localStorage.setItem(EVENTS_KEY, JSON.stringify(events));
-      localStorage.setItem(LKPD_KEY, JSON.stringify(lkpdTopics));
-      localStorage.setItem(LKPD_PROGRESS_KEY, JSON.stringify(lkpdProgress));
-      localStorage.setItem(`${KEY}:imp`, JSON.stringify(impersonating));
-    } catch {}
+    simpanLocal(`${KEY}:user`, user);
+    simpanLocal(ACCOUNTS_KEY, accounts);
+    simpanLocal(MATERIALS_KEY, materials);
+    simpanLocal(ASSIGNMENTS_KEY, assignments);
+    simpanLocal(SUBMISSIONS_KEY, submissions);
+    simpanLocal(ANNOUNCEMENTS_KEY, announcements);
+    simpanLocal(NOTIFICATIONS_KEY, notifications);
+    simpanLocal(CHEAT_KEY, cheatLogs);
+    simpanLocal(EVENTS_KEY, events);
+    simpanLocal(LKPD_KEY, lkpdTopics);
+    simpanLocal(LKPD_PROGRESS_KEY, lkpdProgress);
+    simpanLocal(`${KEY}:imp`, impersonating);
   }, [ready, user, accounts, materials, assignments, submissions, announcements, notifications, cheatLogs, events, lkpdTopics, lkpdProgress, impersonating]);
 
   const value = useMemo<Store>(() => {
     const effective = impersonating || user;
     const users: User[] = accounts.map(({ password: _p, ...u }) => u);
-    const syncUsers = (next: Account[]) => {
-      void persistShared("users", next, effective?.role);
+    const syncUsers = (next: Account[], hapus?: string[]) => {
+      void persistShared("users", next, effective?.role, hapus);
       return next;
     };
     return {
@@ -399,7 +455,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       },
       register: (nama, email, password, kelas) => {
         if (accounts.some((u) => u.email.toLowerCase() === email.toLowerCase())) return "Email sudah terdaftar.";
-        const acc: Account = { id: uid("u"), nama, email, password, role: "siswa", kelas };
+        const acc: Account = { id: uid("u"), nama, email, password, role: "siswa", kelas, revisiAt: nowIso() };
         setAccounts((p) => syncUsers([...p, acc]));
         const { password: _p, ...u } = acc;
         setUser(u);
@@ -415,47 +471,66 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       },
       stopImpersonate: () => setImpersonating(null),
       upsertMaterial: (m) => setMaterials((p) => {
-        const next = p.some((x) => x.id === m.id) ? p.map((x) => (x.id === m.id ? m : x)) : [m, ...p];
+        const baris = { ...m, revisiAt: nowIso() };
+        const next = p.some((x) => x.id === baris.id) ? p.map((x) => (x.id === baris.id ? baris : x)) : [baris, ...p];
         void persistShared("materials", next, effective?.role);
         return next;
       }),
       deleteMaterial: (id) => setMaterials((p) => {
         const next = p.filter((x) => x.id !== id);
-        void persistShared("materials", next, effective?.role);
+        void persistShared("materials", next, effective?.role, [id]);
         return next;
       }),
       upsertAssignment: (a) => setAssignments((p) => {
-        const next = p.some((x) => x.id === a.id) ? p.map((x) => (x.id === a.id ? a : x)) : [a, ...p];
+        // revisiAt → server menggabungkan per id: edit terbaru menang, sehingga
+        // pembukaan kunci evaluasi tidak lagi tertimpa tulisan basi klien lain.
+        const baris = { ...a, revisiAt: nowIso() };
+        const next = p.some((x) => x.id === baris.id) ? p.map((x) => (x.id === baris.id ? baris : x)) : [baris, ...p];
         void persistShared("assignments", next, effective?.role);
         return next;
       }),
       deleteAssignment: (id) => {
         // Hasil siswa dan laporan kecurangan terikat pada tugasnya:
         // menghapus latihan/LKPD/evaluasi ikut menghapus kiriman & laporannya.
+        // Id yang dihapus dikirim sebagai `hapus` (tombstone) supaya tidak "hidup lagi"
+        // dari klien lain yang masih menyimpan array lama.
         setAssignments((p) => {
           const next = p.filter((x) => x.id !== id);
-          void persistShared("assignments", next, effective?.role);
+          void persistShared("assignments", next, effective?.role, [id]);
           return next;
         });
         setSubmissions((p) => {
+          const buang = p.filter((s) => s.assignmentId === id).map((s) => s.id);
+          if (!buang.length) return p;
           const next = p.filter((s) => s.assignmentId !== id);
-          if (next.length !== p.length) void persistShared("submissions", next, effective?.role);
+          void persistShared("submissions", next, effective?.role, buang);
           return next;
         });
         setCheatLogs((p) => {
+          const buang = p.filter((c) => c.evaluationId === id).map((c) => c.id);
+          if (!buang.length) return p;
           const next = p.filter((c) => c.evaluationId !== id);
-          if (next.length !== p.length) void persistShared("cheatLogs", next, effective?.role);
+          void persistShared("cheatLogs", next, effective?.role, buang);
           return next;
         });
       },
       addSubmission: (s) => setSubmissions((p) => {
-        const next = [s, ...p.filter((x) => x.id !== s.id)];
+        const baris = { ...s, revisiAt: nowIso() };
+        const next = [baris, ...p.filter((x) => x.id !== baris.id)];
         void persistShared("submissions", next, effective?.role);
         return next;
       }),
       updateSubmission: (id, patch) => setSubmissions((p) => {
-        const next = p.map((x) => (x.id === id ? { ...x, ...patch } : x));
+        const next = p.map((x) => (x.id === id ? { ...x, ...patch, revisiAt: nowIso() } : x));
         void persistShared("submissions", next, effective?.role);
+        return next;
+      }),
+      deleteSubmission: (id) => setSubmissions((p) => {
+        // Dipakai guru/admin untuk memberi kesempatan ulang (mis. evaluasi yang
+        // terlanjur terkumpul saat ujian belum dibuka).
+        if (!p.some((x) => x.id === id)) return p;
+        const next = p.filter((x) => x.id !== id);
+        void persistShared("submissions", next, effective?.role, [id]);
         return next;
       }),
       addAnnouncement: (a) => setAnnouncements((p) => {
@@ -465,7 +540,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       }),
       deleteAnnouncement: (id) => setAnnouncements((p) => {
         const next = p.filter((x) => x.id !== id);
-        void persistShared("announcements", next, effective?.role);
+        void persistShared("announcements", next, effective?.role, [id]);
         return next;
       }),
       addNotification: (n) => setNotifications((p) => {
@@ -487,35 +562,40 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         void persistShared("notifications", next, effective?.role);
         return next;
       }),
-      bersihkanNotifikasi: () => setNotifications(() => {
-        // Kosongkan seluruh history (semua pengguna). Array kosong ikut ditulis ke
-        // server sehingga perangkat lain ikut bersih pada siklus GET berikutnya.
-        void persistShared("notifications", [], effective?.role);
+      bersihkanNotifikasi: () => setNotifications((p) => {
+        // Kosongkan seluruh history (semua pengguna). Id lama ikut dikirim sebagai
+        // `hapus` (tombstone) sehingga kiriman basi klien lain tidak menghidupkannya lagi.
+        const hapus = p.map((n) => n.id);
+        void persistShared("notifications", [], effective?.role, hapus);
         return [];
       }),
       addCheatLog: (l) => setCheatLogs((p) => {
-        const next = [{ ...l, id: uid("c"), timestamp: nowIso() }, ...p];
+        // Batasi panjang riwayat: 800 entri terbaru cukup untuk laporan kecurangan
+        // dan menjaga payload sinkron tetap ringan saat dipakai banyak siswa.
+        const next = [{ ...l, id: uid("c"), timestamp: nowIso() }, ...p].slice(0, 800);
         void persistShared("cheatLogs", next, effective?.role);
         return next;
       }),
       upsertUser: (u) => setAccounts((p) => {
         const prev = p.find((x) => x.id === u.id);
-        const merged: Account = { ...prev, ...u, password: u.password || prev?.password || "" };
+        const merged: Account = { ...prev, ...u, password: u.password || prev?.password || "", revisiAt: nowIso() };
         return syncUsers(p.some((x) => x.id === u.id) ? p.map((x) => (x.id === u.id ? merged : x)) : [...p, merged]);
       }),
-      deleteUser: (id) => setAccounts((p) => syncUsers(p.filter((x) => x.id !== id))),
+      deleteUser: (id) => setAccounts((p) => syncUsers(p.filter((x) => x.id !== id), [id])),
       upsertEvent: (e) => setEvents((p) => {
-        const next = p.some((x) => x.id === e.id) ? p.map((x) => (x.id === e.id ? e : x)) : [...p, e];
+        const baris = { ...e, revisiAt: nowIso() };
+        const next = p.some((x) => x.id === baris.id) ? p.map((x) => (x.id === baris.id ? baris : x)) : [...p, baris];
         void persistShared("events", next, effective?.role);
         return next;
       }),
       deleteEvent: (id) => setEvents((p) => {
         const next = p.filter((x) => x.id !== id);
-        void persistShared("events", next, effective?.role);
+        void persistShared("events", next, effective?.role, [id]);
         return next;
       }),
       upsertLkpdTopic: (t) => setLkpdTopics((p) => {
-        const next = p.some((x) => x.id === t.id) ? p.map((x) => (x.id === t.id ? t : x)) : [...p, t];
+        const baris = { ...t, revisiAt: nowIso() };
+        const next = p.some((x) => x.id === baris.id) ? p.map((x) => (x.id === baris.id ? baris : x)) : [...p, baris];
         void persistShared("lkpdTopics", next, effective?.role);
         return next;
       }),
@@ -525,12 +605,14 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         const subIds = new Set((topic?.subtopics || []).map((s) => s.id));
         setLkpdTopics((p) => {
           const next = p.filter((x) => x.id !== id);
-          void persistShared("lkpdTopics", next, effective?.role);
+          void persistShared("lkpdTopics", next, effective?.role, [id]);
           return next;
         });
         setLkpdProgress((p) => {
+          const buang = p.filter((x) => subIds.has(x.subtopicId)).map((x) => `${x.siswaId}:${x.subtopicId}`);
+          if (!buang.length) return p;
           const next = p.filter((x) => !subIds.has(x.subtopicId));
-          if (next.length !== p.length) void persistShared("lkpdProgress", next, effective?.role);
+          void persistShared("lkpdProgress", next, effective?.role, buang);
           return next;
         });
       },
@@ -605,6 +687,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
             if (x.siswaId !== siswaId || x.subtopicId !== subtopicId) return x;
             const updated: LkpdProgress = { ...x, updatedAt: nowIso() };
             if (patch.feedback !== undefined) updated.feedbackGuru = patch.feedback;
+            if (patch.feedbackBlok !== undefined) updated.feedbackBlok = patch.feedbackBlok;
             if (patch.nilai !== undefined) {
               if (patch.nilai === null) delete updated.nilaiGuru;
               else updated.nilaiGuru = patch.nilai;

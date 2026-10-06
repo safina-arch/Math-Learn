@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AppShell, Guard } from "@/components/shell";
 import { AnswerUpload } from "@/components/answer-upload";
 import { Badge, Modal } from "@/components/ui";
+import { PengawasKecurangan } from "@/components/pengawas-kecurangan";
 import { useStore } from "@/lib/store";
 import { heuristicGrade, nowIso, pgCorrect, statusTugas, STATUS_TUGAS_META, uid } from "@/lib/utils";
 
@@ -37,6 +38,14 @@ function Work() {
   const [draftRestored, setDraftRestored] = useState(false);
   const loadedDraft = useRef(false);
   const hydrated = useRef(false);
+  /** Pengawas kecurangan latihan: 1 keluar/pindah tab = 1 hitungan + peringatan real-time. */
+  const cheatRef = useRef(0);
+  const mulaiRef = useRef(Date.now());
+  const refreshRef = useRef(false);
+  const selesaiRef = useRef(false);
+  /** Saat dialog foto terbuka browser kehilangan fokus — bukan pelanggaran. */
+  const photoGrace = useRef(0);
+  const [cheatTampil, setCheatTampil] = useState(0);
 
   // Pulihkan jawaban saat halaman dibuka: kiriman yang sudah ada menang (sekali kerja),
   // baru draf "Simpan & keluar" bila belum pernah mengumpulkan.
@@ -86,6 +95,8 @@ function Work() {
   const already = submissions.find((s) => s.assignmentId === a.id && s.siswaId === user?.id);
   /** Sekali kerja: setelah dikumpulkan soal & jawaban terkunci (draf tidak bisa diulang). */
   const terkunci = Boolean(already);
+  // Pengawas berhenti menghitung begitu kiriman ada (pengerjaan selesai).
+  selesaiRef.current = terkunci;
   const stTugas = statusTugas(already);
   const backHref = a.tipe === "lkpd" ? "/lkpd" : "/latihan";
 
@@ -147,7 +158,8 @@ function Work() {
         // Belum diperiksa sampai guru menerbitkan nilai di menu Periksa.
         status: a!.tipe === "latihan" ? "menunggu" : "draf-ai",
         submittedAt: nowIso(),
-        cheatCount: 0,
+        // Jumlah pelanggaran pindah tab selama pengerjaan (lihat PengawasKecurangan).
+        cheatCount: cheatRef.current,
       });
       addNotification({
         userId: "all-guru",
@@ -155,6 +167,14 @@ function Work() {
         judul: `${user.nama} mengumpulkan ${a!.judul}`,
         isi: `Nilai sementara ${total}${adaTerbuka ? " (sebagian soal menunggu pemeriksaan)" : ""}. Perlu pemeriksaan guru.`,
       });
+      if (cheatRef.current > 0) {
+        addNotification({
+          userId: "all-guru",
+          kategori: "kecurangan",
+          judul: `Laporan kecurangan: ${user.nama}`,
+          isi: `${cheatRef.current} kali keluar/pindah tab saat mengerjakan ${a!.judul}.`,
+        });
+      }
       try { localStorage.removeItem(draftKey(a!.id, user.id)); } catch {}
       const pgBenar = a!.questions.filter((q) => q.tipe === "pg" && pgCorrect(answers[q.id] || "", q.kunci)).length;
       setResult({ nilai: total, pgBenar });
@@ -173,6 +193,7 @@ function Work() {
         {already ? <Badge tone="green">Sudah dikumpulkan</Badge> : null}
         {already ? <Badge tone={stTugas === "sudah" ? "green" : "amber"}>{already.nilai != null ? `Nilai sementara ${already.nilai} · ` : ""}{STATUS_TUGAS_META[stTugas].label}</Badge> : null}
         {draftRestored && !already ? <Badge tone="blue">Draf dipulihkan</Badge> : null}
+        {cheatTampil > 0 ? <Badge tone="red">{cheatTampil}× pindah tab tercatat</Badge> : null}
       </div>
       <h1 className="h1 mt-2">{a.judul}</h1>
       <p className="muted mt-1 max-w-[680px] whitespace-pre-wrap">{a.deskripsi}</p>
@@ -224,7 +245,7 @@ function Work() {
                 </div>
               ) : null
             ) : (
-              <AnswerUpload attachments={answerAttachments[q.id] || []} onChange={(files) => setAnswerAttachments((current) => ({ ...current, [q.id]: files }))} />
+              <AnswerUpload attachments={answerAttachments[q.id] || []} onActivity={() => { photoGrace.current = Date.now() + 15000; }} onChange={(files) => setAnswerAttachments((current) => ({ ...current, [q.id]: files }))} />
             )}
           </div>
         ))}
@@ -292,6 +313,19 @@ function Work() {
           <button className="btn-ghost" onClick={() => setResult(null)}>Tetap di sini</button>
         </div>
       </Modal>
+
+      {/* Pengawas latihan: 1 keluar/pindah tab = 1 hitungan, peringatan tampil langsung. */}
+      <PengawasKecurangan
+        aktif={!terkunci}
+        evaluationId={a.id}
+        jenis="latihan"
+        countRef={cheatRef}
+        mulaiRef={mulaiRef}
+        graceRef={photoGrace}
+        selesaiRef={selesaiRef}
+        refreshRef={refreshRef}
+        onCount={setCheatTampil}
+      />
     </div>
   );
 }

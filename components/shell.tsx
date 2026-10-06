@@ -35,6 +35,7 @@ const NAV: Record<string, { href: string; label: string; icon: React.ReactNode }
     { href: "/lkpd", label: "LKPD", icon: <I d="M6 3h9l4 4v14H6zM14 3v5h5M9 12h6M9 16h4" /> },
     { href: "/latihan", label: "Latihan", icon: <I d="M12 20h9M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4z" /> },
     { href: "/evaluasi", label: "Evaluasi", icon: <I d="M9 5h6a1 1 0 011 1v1H8V6a1 1 0 011-1zM8 7H6a1 1 0 00-1 1v11a1 1 0 001 1h12a1 1 0 001-1V8a1 1 0 00-1-1h-2M9 12l2 2 4-4" /> },
+    { href: "/periksa", label: "Hasil siswa", icon: <I d="M5 13l4 4L19 7" /> },
     { href: "/nilai", label: "Nilai siswa", icon: <I d="M4 20V10M10 20V4M16 20v-8M22 20H2" /> },
     { href: "/laporan", label: "Laporan kecurangan", icon: <I d="M12 9v4M12 17h.01M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z" /> },
     { href: "/jadwal", label: "Jadwal", icon: <I d="M4 6.5h16V20H4zM8 3.5v4M16 3.5v4M4 11h16" /> },
@@ -51,7 +52,7 @@ function I({ d }: { d: string }) {
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const { user, logout, notifications, markAllRead, bersihkanNotifikasi, stopImpersonate, impersonating } = useStore();
+  const { user, logout, notifications, markAllRead, bersihkanNotifikasi, stopImpersonate, impersonating, syncError } = useStore();
   const pathname = usePathname();
   const router = useRouter();
   const [mobileNav, setMobileNav] = useState(false);
@@ -71,6 +72,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <div className="bg-primary text-white text-[13px] px-4 py-2 flex items-center justify-between gap-3">
           <span className="truncate">Mode impersonasi — berperan sebagai <b>{user.nama}</b> ({user.role}).</span>
           <button onClick={() => { stopImpersonate(); router.push("/dashboard"); }} className="rounded-md bg-white/15 hover:bg-white/25 px-2.5 py-1 font-medium shrink-0">Keluar mode</button>
+        </div>
+      ) : null}
+
+      {/* Peringatan sinkronisasi untuk SEMUA peran (siswa pun perlu tahu bila
+          kiriman/jawabannya belum berhasil terkirim ke server). */}
+      {syncError ? (
+        <div className="bg-amber-100 border-b border-amber-300 text-amber-900 text-[12.5px] px-4 py-1.5">
+          ⚠️ Sinkronisasi bermasalah — <b>{syncError}</b>. Data akan dikirim ulang otomatis; jangan tutup tab ini dulu.
         </div>
       ) : null}
 

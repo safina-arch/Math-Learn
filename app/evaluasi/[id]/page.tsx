@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppShell, Guard } from "@/components/shell";
 import { AnswerUpload } from "@/components/answer-upload";
 import { Badge, Modal } from "@/components/ui";
+import { PengawasKecurangan } from "@/components/pengawas-kecurangan";
 import { useStore } from "@/lib/store";
 import { fmtCountdown, heuristicGrade, jendelaEvaluasi, nowIso, pgCorrect, uid } from "@/lib/utils";
 
@@ -34,7 +35,8 @@ function Exam() {
   const [answerAttachments, setAnswerAttachments] = useState<Record<string, import("@/lib/types").MaterialAttachment[]>>({});
   const [left, setLeft] = useState(duration);
   const [started, setStarted] = useState(false);
-  const [warn, setWarn] = useState<null | { count: number }>(null);
+  /** Jumlah pelanggaran pindah tab — tampil langsung di header pengerjaan. */
+  const [cheatTampil, setCheatTampil] = useState(0);
   const [ask, setAsk] = useState(false);
   const [done, setDone] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
@@ -55,27 +57,13 @@ function Exam() {
 
   const cheatRef = useRef(0);
   const photoRef = useRef(0);
-  const lastCheatAt = useRef(0);
   /** Waktu mulai ujian — dipakai menghitung menit kejadian untuk laporan. */
   const startedAt = useRef(0);
   /** Saat dialog file terbuka browser kehilangan fokus; jangan dicatat sebagai pelanggaran. */
   const photoGrace = useRef(0);
   const doneRef = useRef(false);
-  /** Refresh / tutup tab menandai halaman akan bongkar — itu bukan pelanggaran. */
+  /** Refresh / tutup tab ditandai pengawas → bukan pelanggaran (lihat PengawasKecurangan). */
   const meninggalkanHalaman = useRef(false);
-  /** Ref agar identitas fungsi store tidak ikut dalam dependensi efek (mencegah log ganda). */
-  const cheatLogRef = useRef(addCheatLog);
-  cheatLogRef.current = addCheatLog;
-
-  useEffect(() => {
-    const tandai = () => { meninggalkanHalaman.current = true; };
-    window.addEventListener("pagehide", tandai);
-    window.addEventListener("beforeunload", tandai);
-    return () => {
-      window.removeEventListener("pagehide", tandai);
-      window.removeEventListener("beforeunload", tandai);
-    };
-  }, []);
 
   const ordered = useMemo(() => {
     if (!a) return [];
@@ -191,60 +179,9 @@ function Exam() {
     return () => clearInterval(t);
   }, [started, done, submit]);
 
-  useEffect(() => {
-    if (!started || !a || a.tipe !== "evaluasi" || done !== null) return;
-    const evaluationId = a.id;
-    function registerCheat(tipe: "blur" | "visibility") {
-      if (doneRef.current || !user) return;
-      const now = Date.now();
-      // Mengunggah foto membuka dialog file — bukan pelanggaran.
-      if (now < photoGrace.current) return;
-      // Browser biasanya memicu blur dan visibilitychange untuk satu perpindahan tab.
-      // Jeda 3 detik dipakai agar satu kejadian hanya dihitung satu kali.
-      if (now - lastCheatAt.current < 3000) return;
-      lastCheatAt.current = now;
-      cheatRef.current += 1;
-      const menit = Math.max(1, Math.round((now - (startedAt.current || now)) / 60000));
-      cheatLogRef.current({ evaluationId, siswaId: user.id, siswaNama: user.nama, tipe, soal: activeQuestion, menit });
-      void fetch("/api/cheat-log", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ evaluationId, siswaId: user.id, siswaNama: user.nama, tipe, count: cheatRef.current, soal: activeQuestion, menit }) });
-      setWarn({ count: cheatRef.current });
-    }
-    const onHide = () => { if (document.hidden) registerCheat("visibility"); };
-    const onBlur = () => registerCheat("blur");
-    document.addEventListener("visibilitychange", onHide);
-    window.addEventListener("blur", onBlur);
-    return () => {
-      document.removeEventListener("visibilitychange", onHide);
-      window.removeEventListener("blur", onBlur);
-    };
-    // addCheatLog dibungkus ref agar identitas store tidak me-restart listener.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [started, a, done, user, activeQuestion]);
-
-  // Pelanggaran juga dicatat saat siswa meninggalkan halaman evaluasi lewat menu
-  // sidebar / navigasi internal, selama pengerjaan masih berjalan. Unmount komponen
-  // = perpindahan halaman. Refresh/tutup tab TIDAK dihitung (pagehide), dan dependensi
-  // dibuat stabil agar perubahan identitas fungsi store tidak membuat log ganda.
-  const navGuardId = a?.id ?? id;
-  const navSiswaId = user?.id || "";
-  const navSiswaNama = user?.nama || "";
-  useEffect(() => {
-    if (!started || !navSiswaId || done !== null) return;
-    const evaluationId = navGuardId;
-    return () => {
-      if (doneRef.current || startedAt.current === 0) return;
-      if (meninggalkanHalaman.current) return; // refresh / tutup tab — bukan pelanggaran
-      const now = Date.now();
-      if (now < photoGrace.current) return;
-      if (now - lastCheatAt.current < 3000) return; // satu kejadian = satu hitungan
-      lastCheatAt.current = now;
-      cheatRef.current += 1;
-      const menit = Math.max(1, Math.round((now - (startedAt.current || now)) / 60000));
-      const soal = activeQuestionRef.current;
-      cheatLogRef.current({ evaluationId, siswaId: navSiswaId, siswaNama: navSiswaNama, tipe: "navigasi", soal, menit });
-      void fetch("/api/cheat-log", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ evaluationId, siswaId: navSiswaId, siswaNama: navSiswaNama, tipe: "navigasi", count: cheatRef.current, soal, menit }) });
-    };
-  }, [started, navSiswaId, navSiswaNama, done, navGuardId]);
+  // Pengawasan kecurangan (blur/pindah tab/navigasi) dipindahkan ke komponen bersama
+  // `PengawasKecurangan`: satu kali keluar tab = satu hitungan, peringatan tampil langsung,
+  // dan refresh/tutup tab tetap tidak dihitung. Dirender pada layar pengerjaan di bawah.
 
   if (!a) return <div className="page-wrap !px-0"><p className="muted">Evaluasi tidak ditemukan.</p></div>;
 
@@ -349,9 +286,10 @@ function Exam() {
         <div className={`card card-pad !py-3 flex items-center gap-3 ${danger ? "!border-red-300 !bg-red-50/70" : ""}`}>
           <div className="min-w-0 flex-1">
             <p className="text-[13px] font-semibold truncate">{a.judul}</p>
-            {user?.role !== "siswa" ? (
-              <p className="text-[12px] text-ink-muted">Pelanggaran pindah tab: <b className={cheatRef.current ? "text-red-600" : ""}>{warn?.count ?? 0}x</b></p>
-            ) : null}
+            {/* Hitungan tampil langsung dari pengawas (setiap keluar/pindah tab = 1×). */}
+            <p className="text-[12px] text-ink-muted">
+              Pelanggaran pindah tab: <b className={cheatTampil ? "text-red-600" : ""}>{cheatTampil}×</b>
+            </p>
           </div>
           <span className={`font-mono font-bold text-[20px] tabular-nums ${danger ? "text-red-600" : "text-ink"}`}>{fmtCountdown(left)}</span>
           <button className="btn-primary !py-2 text-[13px]" disabled={busy} onClick={() => setAsk(true)}>{busy ? "Mengumpulkan…" : "Kumpulkan"}</button>
@@ -416,11 +354,21 @@ function Exam() {
         ))}
       </div>
 
-      <Modal open={!!warn && done === null} onClose={() => setWarn(null)} title="Peringatan sistem">
-        <p className="text-[14px]">Kamu terdeteksi <b>meninggalkan tab ujian</b> ({warn?.count}x). Kejadian ini sudah dicatat beserta waktunya dan dilaporkan ke guru.</p>
-        <p className="muted mt-2">Tetap di tab ini sampai menekan Kumpulkan. Pelanggaran berulang dapat memengaruhi penilaian.</p>
-        <button className="btn-primary mt-4 w-full" onClick={() => setWarn(null)}>Saya mengerti, kembali mengerjakan</button>
-      </Modal>
+      {/* Pengawas: 1 keluar/pindah tab = 1 hitungan + peringatan real-time,
+          navigasi menu tercatat, refresh/tutup tab tidak dihitung. */}
+      <PengawasKecurangan
+        aktif={started && done === null && a.tipe === "evaluasi"}
+        evaluationId={a.id}
+        jenis="evaluasi"
+        countRef={cheatRef}
+        mulaiRef={startedAt}
+        soalRef={activeQuestionRef}
+        graceRef={photoGrace}
+        selesaiRef={doneRef}
+        refreshRef={meninggalkanHalaman}
+        catatNavigasi
+        onCount={setCheatTampil}
+      />
 
       <Modal open={done !== null} onClose={() => router.push("/nilai")} title="🎉 Ujian terkumpul">
         <p className="text-[18px] font-semibold text-center">Jawaban berhasil dikumpulkan.</p>
