@@ -327,7 +327,9 @@ function Work() {
 
       {/* Pengawas latihan: 1 keluar/pindah tab = 1 hitungan, peringatan tampil langsung. */}
       <PengawasKecurangan
-        aktif={!terkunci}
+        // Hanya SISWA yang mengerjakan: guru/admin membuka halaman ini untuk
+        // pratinjau — menu mereka tidak boleh dikunci & tidak dihitung pelanggaran.
+        aktif={!terkunci && user?.role === "siswa"}
         evaluationId={a.id}
         jenis="latihan"
         countRef={cheatRef}

@@ -259,6 +259,57 @@ Verifikasi: `npm.cmd run build` ✅ lulus (lint + type check, 26 route) → comm
 - ✅ `/lkpd` 200, `/latihan` 200; `/` 200; `/tugas` 307 + `Location: /lkpd` → follow 200; `/kelola` 307 + `Location: /materi` → follow 200; `/tugas/abc` tetap 200 (detail tidak ikut redirect).
 - 🐞 **Bug redirect ditemukan & diperbaiki (deploy `2aef13f`):** `redirect()` di halaman yang diprender statis ternyata menyimpan status 307 **tanpa header `Location`** (terverifikasi dari `.next/server/app/tugas.meta` + reproduksi lokal `next start`) → browser menampilkan shell `__next_error__` alih-alih pindah halaman. Perbaikan: `redirects()` di `next.config.mjs` (level platform, sebelum render) + `export const dynamic = "force-dynamic"` di `app/tugas/page.tsx` & `app/kelola/page.tsx` sebagai fallback.
 
-## Status akhir: SELURUH PLAN SELESAI & LIVE
+## Gelombang 13 — 14 permintaan (19 Okt 2026)
+
+### 1. "Hasil Siswa" vs "Nilai Siswa" → dibedakan secara tegas
+- `/periksa` (**Hasil siswa**) = tempat **MEMERIKSA** jawaban per soal lalu menerbitkan nilai & umpan balik; judul + deskripsi halaman ditulis ulang, ada link silang ke `/nilai`.
+- `/nilai` (**Nilai siswa**, guru & admin) = tempat **REKAP**: komponen baru `components/rekap-nilai-guru.tsx` → 4 kartu `Stat` (rata-rata, kiriman dinilai, belum diperiksa, belum mengerjakan), papan langkah `1 Jenis → 2 Kelas → 3 Tugas → 4 Cari nama`, ringkasan tugas terpilih, tabel nilai terurut per kolom + baris roster, tombol **Buka Hasil Siswa**. Cabang siswa tidak diubah.
+- Nav sidebar diberi tooltip `ket` untuk kedua menu.
+
+### 2. Status hasil Latihan jujur + alasan eksplisit
+- Aturan `statusTugas` tetap: **"Sudah diperiksa" hanya bila ada `diperiksa === true` ATAU `feedbackGuru` terisi**; penilaian otomatis sistem bukan bukti.
+- Di bawah badge kini tertulis alasan status: `nilai otomatis — belum dicek guru` / `belum dicek guru` — guru tidak lagi menebak.
+- Temuan data: 24 kiriman punya `status:"dinilai"` (jejak tombol terbit lama) tetapi `diperiksa` & `feedbackGuru` kosong → benar ditampilkan "Belum diperiksa".
+- **`app/api/version/route.ts` + `components/update-banner.tsx`**: tab browser lama (bundle basi) mendeteksi id deployment berubah → banner "🔄 Ada versi baru aplikasi — muat ulang" (cek saat mulai, tiap 5 menit, dan saat tab aktif). Ini penyebab paling mungkin tampilan status yang keliru.
+
+### 3. Hasil latihan seluruhnya muncul di guru
+- Tabel kini menyertakan **baris roster**: siswa pada tugas terpilih yang belum mengumpulkan tampil sebagai baris abu-abu bertstatus **Belum mengerjakan** (nilai `—`, tanpa tombol Periksa), ikut terurut & terfilter.
+- Ringkasan papan: `Belum mengumpulkan: n siswa (baris abu-abu)`; kartu baru `Belum mengerjakan`.
+- Data saat ini: 25 kiriman / 18 siswa unik dari roster 38 → sebelumnya 20 siswa tidak terlihat sama sekali.
+
+### 4. Anti-cheat v2 — satu modul global `lib/pengawas.ts`
+- `components/pengawas-kecurangan.tsx` kini hanya **mendaftarkan konteks**; perhitungan, penguncian menu, dan **modal peringatan berada di AppShell** sehingga peringatan tetap tampil di halaman mana pun (termasuk setelah siswa berpindah) + tombol **Kembali mengerjakan**.
+- **Blokir penuh** (keputusan user): selama pengerjaan berjalan (evaluasi, latihan, LKPD) sidebar desktop, tombol hamburger, drawer, bottom nav HP, dan logo menjadi tombol terkunci 🔒; upaya klik memunculkan modal "Menu dikunci" **tanpa menambah hitungan** (siswa memang tidak jadi berpindah).
+- Perpindahan yang tetap terjadi (tombol back browser / URL langsung) dihitung **1×** lewat pembersihan komponen + pemantau `pathname` di AppShell.
+- Aturan 1 kejadian = 1 hitungan dipertahankan: penanda `tinggal`, jeda 1,5 dtk, `visibilitychange` ditunda 350 ms (refresh/tutup tab tak dihitung), grasi foto dihormati, berhenti setelah dikumpulkan.
+- Chip `🔒 Pengerjaan · ⚠️ n×` di header + bar hitungan menggantikan bottom nav HP.
+- `labelCheat()` (`lib/utils.ts`) menandai data lama: `6526× · data lama` (era debounce 3 detik) agar tidak disalahbaca sebagai hitungan aturan baru.
+- `/tugas/[id]`: pengawas kini **hanya untuk siswa** — guru/admin yang membuka halaman untuk pratinjau tidak dikunci dan tidak dihitung.
+
+### 5. Satu akun satu device dalam satu waktu (login baru DIBLOKIR)
+- `POST /api/presence` menerima `deviceId` + `claim:true`: id perangkat disimpan di kolom `role` sebagai `role|deviceId` (GET mem-parse balik, daftar admin tetap bersih) — tanpa kolom baru.
+- Login baru ditolak bila baris presence menunjukkan **perangkat lain masih aktif (heartbeat < 60 detik)** → pesan "Akun ini sedang dipakai di perangkat lain (terakhir aktif … detik lalu)".
+- Heartbeat 15 dtk memperbarui `last_seen`; `logout`/`pagehide` mengirim `offline` → kunci dilepas segera; baris lama tanpa `deviceId` = gagal terbuka (tidak mengunci pengguna di luar); kegagalan jaringan saat klaim juga tidak memblokir.
+- `login` di store kini `async`; halaman login menampilkan state "Memeriksa sesi…".
+
+### 6. Penilaian berbasis AI (Gemini) siap dipakai + fallback otomatis
+- `app/api/ai/grade/route.ts`: `GEMINI_API_KEY` **opsional**; daftar model dari `GEMINI_MODEL` (default `gemini-2.5-flash → gemini-2.0-flash → gemini-1.5-flash`), kirim lewat header `x-goog-api-key`, **timeout 12 detik per percobaan** (aman saat >50 user), parser JSON tahan fence/escape, semua kegagalan → heuristik dengan status 200, `jawaban` kosong → skor 0 + "Belum ada jawaban."
+- Jejak mesin (`engine`, `model`) disimpan di `feedbackAi` (evaluasi & latihan) → modal Periksa menampilkan **"Sumber penilaian otomatis: Gemini AI / kunci jawaban (PG) / heuristik lokal"**.
+- Mengaktifkan: isi `GEMINI_API_KEY` di `.env.local` (lokal) dan env project Vercel (tanpa commit). Tanpa key, sistem tetap jalan penuh memakai heuristik lokal.
+
+### 7. Perapian tampilan penilaian guru/admin
+- `/periksa`: 4 kartu ringkasan (belum diperiksa, sudah diperiksa, belum mengerjakan, rata-rata), ringkasan papan lebih informatif, alasan status per baris, sumber penilaian AI, link ke rekap.
+- `/nilai`: rekap terpisah & tersortir (lihat butir 1).
+
+### Verifikasi produksi (deploy `dpl_4A2HxnpJrctYPBsgiL3LYZh7xj6Z`, READY)
+- `GET /api/version` → id deployment (banner versi bekerja).
+- String chunk produksi: `Menu dikunci`, `Pengerjaan berlangsung`, `Kembali mengerjakan`, `Hasil siswa — periksa`, `Rekap nilai, ringkasan`, `Ada versi baru aplikasi`, `belum mengumpulkan`, `nilai otomatis — belum dicek guru`, `Sumber penilaian otomatis`, `sedang dipakai di perangkat lain`, `Buka Hasil Siswa` → **semua ditemukan**.
+- Kunci perangkat: klaim devA `ok` → klaim devB **`blocked` + `sisaDetik:59`** → lepas (`offline`) → devB `ok`; baris legacy tanpa `deviceId` → `ok` (gagal terbuka); `GET` mengembalikan role bersih tanpa `|`.
+- `POST /api/ai/grade` (tanpa key) → `engine:"heuristic"` 200; jawaban kosong → `skor:0` 200.
+- `GET /api/sync` → `configured:true`, 10 key, 28 submissions / 41 users utuh; row uji presence sudah dibersihkan.
+
+
+
+## Status akhir: SELURUH PLAN SELESAI & LIVE (Gelombang 1–13)
 
 Tidak ada langkah tersisa. Perubahan berikutnya: edit kode → `git push origin main` → Vercel auto-build (env sudah tersimpan di project Vercel). Kredensial tersimpan di `.env.local` (ter-ignore git).
