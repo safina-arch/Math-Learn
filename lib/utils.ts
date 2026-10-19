@@ -263,6 +263,18 @@ export function statusRingkasan(assignments: Assignment[], submissions: Submissi
   return { belum, blm, sudah };
 }
 
+/**
+ * Tampilan jumlah pelanggaran pindah tab untuk guru.
+ * Data lama (era debounce 3 detik sebelum aturan "satu keluar = satu hitungan")
+ * bisa membengkak ratusan/ribu kali → ditandai `data lama` agar tidak disalahbaca
+ * sebagai hitungan aturan baru.
+ */
+export function labelCheat(n?: number): string {
+  const v = Number(n) || 0;
+  if (v <= 0) return "0";
+  return v > 50 ? `${v}× · data lama` : `${v}×`;
+}
+
 /** Tanggal hari ini (YYYY-MM-DD) — zone waktu lokal, untuk mencocokkan jadwal pertemuan. */
 export function todayIso(): string {
   const d = new Date();
@@ -276,6 +288,7 @@ export const TIPEURUT: Record<AssignmentType, number> = { lkpd: 0, latihan: 1, e
 
 /** Kategori kalender akademik + warna badge-nya. */
 export const KATEGORI_AGENDA = ["UTS", "UAS", "Libur", "Hari Penting", "Kegiatan"] as const;
+
 export function kategoriTone(k?: string): "red" | "purple" | "green" | "amber" | "blue" {
   if (k === "UTS") return "red";
   if (k === "UAS") return "purple";

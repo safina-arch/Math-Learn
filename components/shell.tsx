@@ -2,10 +2,20 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import React, { useState } from "react";
+import React, { useSyncExternalStore, useState } from "react";
 import { useStore, visibleNotifications } from "@/lib/store";
+import { Modal } from "@/components/ui";
+import { UpdateBanner } from "@/components/update-banner";
+import {
+  keadaanAwalPengawas,
+  keadaanPengawas,
+  langgananPengawas,
+  pantauHalaman,
+  tutupPeringatan,
+  upayaBlok,
+} from "@/lib/pengawas";
 
-const NAV: Record<string, { href: string; label: string; icon: React.ReactNode }[]> = {
+const NAV: Record<string, { href: string; label: string; icon: React.ReactNode; ket?: string }[]> = {
   siswa: [
     { href: "/dashboard", label: "Beranda", icon: <I d="M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10" /> },
     { href: "/materi", label: "Materi", icon: <I d="M4 5h16v14H4zM8 9h8M8 13h8M8 17h5" /> },
@@ -22,8 +32,8 @@ const NAV: Record<string, { href: string; label: string; icon: React.ReactNode }
     { href: "/lkpd", label: "LKPD", icon: <I d="M6 3h9l4 4v14H6zM14 3v5h5M9 12h6M9 16h4" /> },
     { href: "/latihan", label: "Latihan", icon: <I d="M12 20h9M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4z" /> },
     { href: "/evaluasi", label: "Evaluasi", icon: <I d="M9 5h6a1 1 0 011 1v1H8V6a1 1 0 011-1zM8 7H6a1 1 0 00-1 1v11a1 1 0 001 1h12a1 1 0 001-1V8a1 1 0 00-1-1h-2M9 12l2 2 4-4" /> },
-    { href: "/periksa", label: "Hasil siswa", icon: <I d="M5 13l4 4L19 7" /> },
-    { href: "/nilai", label: "Nilai siswa", icon: <I d="M4 20V10M10 20V4M16 20v-8M22 20H2" /> },
+    { href: "/periksa", label: "Hasil siswa", icon: <I d="M5 13l4 4L19 7" />, ket: "Memeriksa jawaban per soal lalu menerbitkan nilai" },
+    { href: "/nilai", label: "Nilai siswa", icon: <I d="M4 20V10M10 20V4M16 20v-8M22 20H2" />, ket: "Rekap nilai, ringkasan & ekspor" },
     { href: "/laporan", label: "Laporan kecurangan", icon: <I d="M12 9v4M12 17h.01M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z" /> },
     { href: "/jadwal", label: "Jadwal", icon: <I d="M4 6.5h16V20H4zM8 3.5v4M16 3.5v4M4 11h16" /> },
     { href: "/pengumuman", label: "Pengumuman", icon: <I d="M6 9a6 6 0 0112 0c0 5 2 6 2 6H4s2-1 2-6M10 20a2 2 0 004 0" /> },
@@ -35,8 +45,8 @@ const NAV: Record<string, { href: string; label: string; icon: React.ReactNode }
     { href: "/lkpd", label: "LKPD", icon: <I d="M6 3h9l4 4v14H6zM14 3v5h5M9 12h6M9 16h4" /> },
     { href: "/latihan", label: "Latihan", icon: <I d="M12 20h9M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4z" /> },
     { href: "/evaluasi", label: "Evaluasi", icon: <I d="M9 5h6a1 1 0 011 1v1H8V6a1 1 0 011-1zM8 7H6a1 1 0 00-1 1v11a1 1 0 001 1h12a1 1 0 001-1V8a1 1 0 00-1-1h-2M9 12l2 2 4-4" /> },
-    { href: "/periksa", label: "Hasil siswa", icon: <I d="M5 13l4 4L19 7" /> },
-    { href: "/nilai", label: "Nilai siswa", icon: <I d="M4 20V10M10 20V4M16 20v-8M22 20H2" /> },
+    { href: "/periksa", label: "Hasil siswa", icon: <I d="M5 13l4 4L19 7" />, ket: "Memeriksa jawaban per soal lalu menerbitkan nilai" },
+    { href: "/nilai", label: "Nilai siswa", icon: <I d="M4 20V10M10 20V4M16 20v-8M22 20H2" />, ket: "Rekap nilai, ringkasan & ekspor" },
     { href: "/laporan", label: "Laporan kecurangan", icon: <I d="M12 9v4M12 17h.01M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z" /> },
     { href: "/jadwal", label: "Jadwal", icon: <I d="M4 6.5h16V20H4zM8 3.5v4M16 3.5v4M4 11h16" /> },
     { href: "/pengumuman", label: "Pengumuman", icon: <I d="M6 9a6 6 0 0112 0c0 5 2 6 2 6H4s2-1 2-6M10 20a2 2 0 004 0" /> },
@@ -57,6 +67,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [mobileNav, setMobileNav] = useState(false);
   const [bell, setBell] = useState(false);
+  /** Keadaan anti-cheat global: kunci menu + peringatan real-time selama pengerjaan. */
+  const p = useSyncExternalStore(langgananPengawas, keadaanPengawas, keadaanAwalPengawas);
+
+  // Cadangan penghitungan: perpindahan pathname yang tidak terdeteksi oleh unmount
+  // halaman pengerjaan (mis. perubahan query pada rute yang sama) tetap dicatat.
+  React.useEffect(() => {
+    pantauHalaman(pathname);
+  }, [pathname]);
 
   if (!user) {
     return <>{children}</>;
@@ -65,6 +83,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const nav = NAV[user.role] || NAV.siswa;
   const notifs = visibleNotifications(notifications, user).slice(0, 12);
   const unread = visibleNotifications(notifications, user).filter((n) => !n.dibaca).length;
+  /** Menu tidak bisa diklik selama pengerjaan berjalan → upaya pindah diperingatkan. */
+  const navLocked = (e: React.MouseEvent) => {
+    if (!p.terkunci) return;
+    e.preventDefault();
+    upayaBlok();
+  };
 
   return (
     <div className="min-h-screen bg-canvas">
@@ -83,16 +107,31 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       ) : null}
 
+      {/* Tab lama (bundle usang) → dorong reload agar perbaikan terbaru ikut aktif. */}
+      <UpdateBanner />
+
       <header className="sticky top-0 z-40 bg-white/90 backdrop-blur border-b border-line">
         <div className="mx-auto max-w-[1100px] px-4 h-[56px] flex items-center gap-3">
-          <button className="lg:hidden btn-ghost !px-2.5" onClick={() => setMobileNav((v) => !v)} aria-label="menu">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
+          <button
+            className="lg:hidden btn-ghost !px-2.5"
+            onClick={() => (p.terkunci ? upayaBlok() : setMobileNav((v) => !v))}
+            aria-label={p.terkunci ? "menu dikunci" : "menu"}
+            title={p.terkunci ? "Menu dikunci selama pengerjaan" : undefined}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d={p.terkunci ? "M7 11V7a5 5 0 0110 0v4M5 11h14v10H5z" : "M4 7h16M4 12h16M4 17h16"} />
+            </svg>
           </button>
-          <Link href="/dashboard" className="flex items-center gap-2">
+          <Link href="/dashboard" className="flex items-center gap-2" onClick={navLocked} aria-disabled={p.terkunci}>
             <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-white font-bold text-[15px]">M</span>
             <span className="font-bold tracking-tight text-[15.5px]">Math-Learn</span>
           </Link>
           <div className="ml-auto flex items-center gap-2">
+            {p.terkunci ? (
+              <span className="badge bg-red-50 text-red-700 border-red-200 font-semibold" title="Menu dinonaktifkan selama pengerjaan berlangsung">
+                🔒 Pengerjaan · ⚠️ {p.jumlah}×
+              </span>
+            ) : null}
             <div className="relative">
               <button className="btn-ghost !px-2.5 relative" onClick={() => setBell((v) => !v)} aria-label="notifikasi">
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M6 9a6 6 0 0112 0c0 5 2 6 2 6H4s2-1 2-6M10 20a2 2 0 004 0" /></svg>
@@ -141,11 +180,27 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <div className="mx-auto max-w-[1100px] px-0 sm:px-4 flex gap-5">
         <aside className="hidden lg:block w-[220px] shrink-0 py-5">
           <nav className="sticky top-[76px] space-y-0.5">
-            {nav.map((n) => (
-              <Link key={n.href} href={n.href} className={`navlink ${pathname === n.href || pathname.startsWith(n.href + "/") ? "navlink-active" : ""}`}>
-                {n.icon}<span>{n.label}</span>
-              </Link>
-            ))}
+            {p.terkunci ? (
+              <p className="px-3 pb-2 text-[12px] text-red-600 font-medium">🔒 Menu dikunci selama pengerjaan</p>
+            ) : null}
+            {nav.map((n) =>
+              p.terkunci ? (
+                <button
+                  key={n.href}
+                  type="button"
+                  className="navlink text-ink-faint opacity-75"
+                  onClick={upayaBlok}
+                  title="Menu dikunci selama pengerjaan berlangsung"
+                  aria-disabled
+                >
+                  {n.icon}<span>{n.label}</span><span className="ml-auto text-[11px]">🔒</span>
+                </button>
+              ) : (
+                <Link key={n.href} href={n.href} title={n.ket} className={`navlink ${pathname === n.href || pathname.startsWith(n.href + "/") ? "navlink-active" : ""}`}>
+                  {n.icon}<span>{n.label}</span>
+                </Link>
+              ),
+            )}
             <div className="pt-4 mt-4 border-t border-line">
               <p className="px-3 text-[12px] text-ink-faint mb-1">{user.kelas} · {user.email}</p>
             </div>
@@ -156,9 +211,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <div className="lg:hidden fixed inset-0 z-40">
             <button className="absolute inset-0 bg-black/25" onClick={() => setMobileNav(false)} aria-label="tutup menu" />
             <div className="absolute left-0 top-0 bottom-0 w-[260px] bg-white border-r border-line p-4 space-y-0.5">
-              {nav.map((n) => (
-                <Link key={n.href} href={n.href} onClick={() => setMobileNav(false)} className={`navlink ${pathname === n.href ? "navlink-active" : ""}`}>{n.icon}<span>{n.label}</span></Link>
-              ))}
+              {p.terkunci ? (
+                <p className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-[12.5px] text-red-700">
+                  🔒 Pengerjaan berlangsung — menu dinonaktifkan sampai kamu mengumpulkan.
+                </p>
+              ) : null}
+              {nav.map((n) =>
+                p.terkunci ? (
+                  <button key={n.href} type="button" className="navlink text-ink-faint" onClick={upayaBlok} aria-disabled>
+                    {n.icon}<span>{n.label}</span><span className="ml-auto text-[11px]">🔒</span>
+                  </button>
+                ) : (
+                  <Link key={n.href} href={n.href} onClick={() => setMobileNav(false)} className={`navlink ${pathname === n.href ? "navlink-active" : ""}`}>{n.icon}<span>{n.label}</span></Link>
+                ),
+              )}
             </div>
           </div>
         ) : null}
@@ -166,18 +232,60 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <main className="flex-1 min-w-0 px-4 sm:px-0 py-5 pb-28 lg:pb-16">{children}</main>
       </div>
 
-      <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-white border-t border-line overflow-x-auto">
-        <div className="flex min-w-max">
-          {nav.map((n) => {
-            const active = pathname === n.href || pathname.startsWith(n.href + "/");
-            return (
-              <Link key={n.href} href={n.href} className={`flex flex-col items-center gap-0.5 py-2.5 px-3 text-[11px] shrink-0 w-[72px] ${active ? "text-primary font-semibold" : "text-ink-muted"}`}>
-                {n.icon}<span>{n.label}</span>
-              </Link>
-            );
-          })}
+      {p.terkunci ? (
+        <div className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-ink text-white text-[12.5px] px-4 py-2.5 flex items-center justify-between gap-3">
+          <span>🔒 Pengerjaan berlangsung — menu dinonaktifkan.</span>
+          <span className="shrink-0 font-semibold">⚠️ {p.jumlah}×</span>
         </div>
-      </nav>
+      ) : (
+        <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-white border-t border-line overflow-x-auto">
+          <div className="flex min-w-max">
+            {nav.map((n) => {
+              const active = pathname === n.href || pathname.startsWith(n.href + "/");
+              return (
+                <Link key={n.href} href={n.href} className={`flex flex-col items-center gap-0.5 py-2.5 px-3 text-[11px] shrink-0 w-[72px] ${active ? "text-primary font-semibold" : "text-ink-muted"}`}>
+                  {n.icon}<span>{n.label}</span>
+                </Link>
+              );
+            })}
+          </div>
+        </nav>
+      )}
+
+      {/* Peringatan anti-cheat GLOBAL: tampil di halaman mana pun (termasuk setelah
+          siswa berpindah menu) berkat modul lib/pengawas.ts. */}
+      <Modal open={p.peringatan !== null} onClose={tutupPeringatan} title={p.peringatan?.tipe === "blok" ? "Menu dikunci" : "Peringatan sistem"}>
+        {p.peringatan?.tipe === "blok" ? (
+          <>
+            <p className="text-[14px]">
+              Menu navigasi <b>dinonaktifkan selama pengerjaan berlangsung</b> agar kamu fokus. Kegiatan yang sedang
+              berjalan (<b>{p.jenis}</b>) harus dikumpulkan terlebih dahulu.
+            </p>
+            <p className="muted mt-2">Upaya berpindah halaman tidak mengubah hitungan pelanggaranmu — tetap di halaman ini.</p>
+            <button className="btn-primary mt-4 w-full" onClick={tutupPeringatan}>Lanjutkan mengerjakan</button>
+          </>
+        ) : (
+          <>
+            <p className="text-[14px]">
+              Kamu terdeteksi <b>meninggalkan tab/halaman {p.jenis === "evaluasi" ? "ujian" : "pengerjaan"}</b> — total{" "}
+              <b>{p.peringatan?.n ?? 0}×</b>. Setiap satu kali keluar/pindah tab dihitung <b>satu kali</b>, langsung
+              dicatat beserta waktunya, dan dilaporkan ke guru.
+            </p>
+            <p className="muted mt-2">
+              Menu dikunci selama pengerjaan. Pelanggaran berulang dapat memengaruhi penilaian.
+            </p>
+            <div className="mt-4 flex flex-col gap-2">
+              {p.peringatan?.halaman && p.terkunci === false ? (
+                <button className="btn-primary w-full" onClick={() => { router.push(p.peringatan!.halaman); tutupPeringatan(); }}>
+                  🔙 Kembali mengerjakan
+                </button>
+              ) : (
+                <button className="btn-primary w-full" onClick={tutupPeringatan}>Saya mengerti, kembali mengerjakan</button>
+              )}
+            </div>
+          </>
+        )}
+      </Modal>
     </div>
   );
 }

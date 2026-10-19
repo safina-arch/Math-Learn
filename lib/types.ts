@@ -87,7 +87,18 @@ export interface Submission {
   /** Rotasi tampilan foto (derajat) per URL — dikontrol guru saat memeriksa. */
   fotoRotasi?: Record<string, number>;
   nilai: number | null;
-  feedbackAi: Record<string, { skor: number; feedback: string; draft: boolean }>;
+  feedbackAi: Record<
+    string,
+    {
+      skor: number;
+      feedback: string;
+      draft: boolean;
+      /** Mesin penilai yang dipakai ("gemini" | "heuristic" | "otomatis-pg" | dll). */
+      engine?: string;
+      /** Nama model Gemini yang menghasilkan nilai (bila memakai Gemini). */
+      model?: string;
+    }
+  >;
   feedbackGuru: string;
   status: "dinilai" | "menunggu" | "draf-ai";
   /**

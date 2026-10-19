@@ -84,7 +84,10 @@ function Exam() {
     try {
       let totalBobot = 0;
       let pgScore = 0;
-      const feedbackAi: Record<string, { skor: number; feedback: string; draft: boolean }> = {};
+      const feedbackAi: Record<
+        string,
+        { skor: number; feedback: string; draft: boolean; engine?: string; model?: string }
+      > = {};
       for (const q of a.questions) {
         totalBobot += q.bobot;
         const ans = answers[q.id] || "";
@@ -92,18 +95,25 @@ function Exam() {
           const ok = pgCorrect(ans, q.kunci);
           if (ok) pgScore += q.bobot;
           // Kunci TIDAK ditampilkan ke siswa — guru melihatnya di menu Periksa.
-          feedbackAi[q.id] = { skor: ok ? 100 : 0, feedback: ok ? "Jawaban tepat." : "Belum tepat — jawaban disimpan, menunggu pemeriksaan guru.", draft: false };
+          feedbackAi[q.id] = { skor: ok ? 100 : 0, feedback: ok ? "Jawaban tepat." : "Belum tepat — jawaban disimpan, menunggu pemeriksaan guru.", draft: false, engine: "otomatis-pg" };
         } else {
           // Uraian/essay tidak dianggap benar oleh sistem — hanya saran draf untuk guru.
           let g = heuristicGrade(q.teks, ans, q.kunci, q.rubrik, q.bobot);
+          // Jejak mesin penilai: default heuristik lokal, diganti bila API AI sukses.
+          let engine = "heuristic";
+          let model: string | undefined;
           try {
             const r = await fetch("/api/ai/grade", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ teks: q.teks, jawaban: ans, kunci: q.kunci, rubrik: q.rubrik }) });
             if (r.ok) {
               const j = await r.json();
-              if (typeof j.skor === "number") g = { skor: j.skor, feedback: j.feedback };
+              if (typeof j.skor === "number") {
+                g = { skor: j.skor, feedback: j.feedback };
+                engine = j.engine || engine;
+                model = j.model;
+              }
             }
           } catch {}
-          feedbackAi[q.id] = { ...g, draft: true };
+          feedbackAi[q.id] = { ...g, draft: true, engine, ...(model ? { model } : {}) };
         }
       }
       // Skor sementara = bobot pilihan ganda yang benar / total bobot (uraian menunggu guru).

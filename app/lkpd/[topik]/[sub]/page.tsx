@@ -131,8 +131,10 @@ export default function JourneyPage() {
     <AppShell>
       <Guard allow={["siswa", "guru", "admin"]}>
         <div>
-          {/* Pengawas kecurangan: peringatan real-time saat keluar tab selama LKPD belum dikumpulkan.
-              `catatNavigasi` sengaja tidak dipasang (false) untuk LKPD. */}
+          {/* Pengawas kecurangan: peringatan real-time saat keluar tab / berpindah menu
+              selama LKPD belum dikumpulkan. Menu sidebar ikut DIKUNCI oleh AppShell
+              selama `aktif` (keputusan Gelombang 13: blokir penuh, berlaku untuk
+              evaluasi, latihan, dan LKPD). */}
           <PengawasKecurangan
             aktif={Boolean(prog) && !prog?.dikumpulkan}
             evaluationId={`lkpd:${sub.id}`}

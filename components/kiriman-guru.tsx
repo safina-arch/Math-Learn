@@ -1,17 +1,27 @@
 "use client";
 
 import { Fragment, useRef, useState } from "react";
+import Link from "next/link";
 import { Badge, Empty, Modal, Stat } from "@/components/ui";
 import { HasilLkpdGuru, barisHasil } from "@/components/lkpd/hasil";
 import { useStore } from "@/lib/store";
-import { fmtDateTime, STATUS_TUGAS_META, statusRingkasan, statusTugas, TIPE_LABEL, TIPE_TONE, TIPEURUT } from "@/lib/utils";
-import type { AssignmentType, MaterialAttachment } from "@/lib/types";
+import { fmtDateTime, labelCheat, STATUS_TUGAS_META, statusRingkasan, statusTugas, TIPE_LABEL, TIPE_TONE, TIPEURUT } from "@/lib/utils";
+import type { AssignmentType, MaterialAttachment, Submission } from "@/lib/types";
 
 type FilterTipe = "semua" | AssignmentType;
 type FilterStatus = "semua" | "belum-diperiksa" | "sudah";
 type SortKey = "siswa" | "tugas" | "kelas" | "status" | "nilai" | "waktu";
 
 const URUT_STATUS: Record<import("@/lib/utils").StatusTugas, number> = { belum: 0, "belum-diperiksa": 1, sudah: 2 };
+
+/**
+ * Baris tabel penilaian: kiriman siswa ATAU baris roster (siswa kelas pada tugas
+ * terpilih yang belum mengumpulkan). Roster ikut tampil agar guru melihat
+ * **seluruh kelas** — bukan hanya yang sudah mengirim jawaban.
+ */
+type BarisTabel =
+  | { t: "sub"; s: Submission }
+  | { t: "roster"; siswaId: string; nama: string; kelas: string };
 
 /**
  * Rotasi foto DITENKAN ke dalam file (bukan sekadar CSS) — hasilnya semua yang
@@ -140,6 +150,50 @@ export function HasilKirimanGuru() {
     </th>
   );
 
+  // ——— Baris roster: siswa pada tugas terpilih yang BELUM mengumpulkan tetap tampil
+  //     (penyebab "hasil latihan belum seluruhnya muncul" — sebelumnya hanya baris
+  //     kiriman yang ditampilkan, 20 siswa dari 38 tidak terlihat sama sekali).
+  const tugasTerpilih = tugasId === "semua" ? null : assignments.find((a) => a.id === tugasId) || null;
+  const barisRoster: BarisTabel[] =
+    tugasTerpilih && status === "semua"
+      ? users
+          .filter((u) => u.role === "siswa")
+          .filter((u) => tugasTerpilih.kelas === "semua" || u.kelas === tugasTerpilih.kelas)
+          .filter((u) => kelas === "semua" || u.kelas === kelas)
+          .filter((u) => !urutKiriman.some((s) => s.siswaId === u.id))
+          .map((u) => ({ t: "roster" as const, siswaId: u.id, nama: u.nama, kelas: u.kelas }))
+      : [];
+
+  const tipeBaris = (b: BarisTabel): AssignmentType => (b.t === "sub" ? tipeOf(b.s.assignmentId) : tugasTerpilih?.tipe || "latihan");
+  const judulBaris = (b: BarisTabel): string => (b.t === "sub" ? judulDari(b.s.assignmentId) : tugasTerpilih?.judul || "");
+  const namaBaris = (b: BarisTabel): string => (b.t === "sub" ? b.s.siswaNama : b.nama);
+  const kunciBaris = (b: BarisTabel, key: SortKey): string | number => {
+    if (b.t === "roster") {
+      if (key === "siswa") return b.nama.toLowerCase();
+      if (key === "kelas") return b.kelas.toLowerCase();
+      if (key === "tugas") return judulBaris(b).toLowerCase();
+      if (key === "nilai") return -1;
+      if (key === "status") return URUT_STATUS["belum"];
+      return ""; // belum dikumpulkan → waktu kosong (selalu diurut terakhir)
+    }
+    return kunciSort(b.s, key);
+  };
+  const tampil: BarisTabel[] = [...urutKiriman.map((s) => ({ t: "sub" as const, s })), ...barisRoster].sort((a, b) => {
+    // Baku: kelompok jenis tugas → nama siswa. Saat user memilih kolom, ikuti kolom itu penuh.
+    if (!sort) {
+      const t = TIPEURUT[tipeBaris(a)] - TIPEURUT[tipeBaris(b)];
+      if (t) return t;
+      const n = namaBaris(a).localeCompare(namaBaris(b), "id");
+      if (n) return n;
+      return a.t === "sub" && b.t === "sub" ? b.s.submittedAt.localeCompare(a.s.submittedAt) : 0;
+    }
+    const va = kunciBaris(a, sort.key);
+    const vb = kunciBaris(b, sort.key);
+    if (va < vb) return -sort.dir;
+    if (va > vb) return sort.dir;
+    return namaBaris(a).localeCompare(namaBaris(b), "id");
+  });
+
   const hitungTipe = (t: AssignmentType) => berelasi.filter((s) => tipeOf(s.assignmentId) === t).length;
   /** Chip LKPD ikut menghitung penilaian journey LKPD (per sub-bab), bukan hanya kiriman tugas lama. */
   const lkpdJourney = barisHasil(lkpdTopics, lkpdProgress, users).length;
@@ -191,17 +245,22 @@ export function HasilKirimanGuru() {
 
   return (
     <div>
-      <div className="grid sm:grid-cols-2 gap-3 mb-3">
+      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
         <Stat label="Belum diperiksa" value={String(ringkas.blm)} sub="kiriman menunggu pemeriksaan" />
         <Stat label="Sudah diperiksa" value={String(ringkas.sudah)} sub="nilai sudah diterbitkan" />
+        <Stat label="Belum mengerjakan" value={String(ringkas.belum)} sub="siswa belum mengumpulkan" />
+        <Stat label="Rata-rata nilai" value={String(rata)} sub={`${dinilai.length} kiriman bernilai`} />
       </div>
 
       <div className="flex flex-wrap items-center gap-2 mb-3">
         <h2 className="h2">📋 Penilaian latihan &amp; evaluasi</h2>
         <Badge tone="blue">{berelasi.length} kiriman</Badge>
         {menunggu.length ? <Badge tone="amber">{menunggu.length} menunggu pemeriksaan</Badge> : null}
+        <Link href="/nilai" className="btn-ghost !py-1.5 !text-[12.5px] ml-auto">Rekap nilai &amp; ekspor →</Link>
       </div>
       <p className="muted mb-3 max-w-[720px]">
+        <b>Halaman ini untuk MEMERIKSA</b> jawaban per soal lalu menerbitkan nilai (lihat menu{" "}
+        <Link href="/nilai" className="text-primary font-medium">Nilai siswa</Link> untuk rekap &amp; ekspor).
         Pilih <b>Jenis → Kelas → Tugas → Status</b> untuk menyaring, lalu klik kolom apa pun untuk mengurutkan.
         Klik <b>👁 Periksa</b> pada baris siswa: lihat seluruh soal + jawaban + kunci → sunting nilai/feedback →{" "}
         <b>Setujui &amp; terbitkan</b>. Status baris berubah dari <b>Belum diperiksa</b> menjadi <b>Sudah diperiksa</b>.
@@ -268,6 +327,7 @@ export function HasilKirimanGuru() {
           <span>{dinilai.length} dari {urutKiriman.length} kiriman punya nilai</span>
           <span>Menunggu pemeriksaan: <b className="text-ink">{menunggu.length}</b></span>
           <span>Sudah diperiksa: <b className="text-ink">{urutKiriman.length - menunggu.length}</b></span>
+          {barisRoster.length ? <span className="text-amber-700">Belum mengumpulkan: <b>{barisRoster.length}</b> siswa (baris abu-abu)</span> : null}
           {yatim ? <span className="text-amber-700">Tugas terhapus: <b>{yatim}</b> (tetap ditampilkan)</span> : null}
           {sort ? <button className="text-primary font-medium" onClick={() => setSort(null)}>reset urutan</button> : <span className="text-ink-faint">Urut baku: jenis tugas → nama siswa</span>}
         </div>
@@ -276,7 +336,7 @@ export function HasilKirimanGuru() {
       {/* Papan langkah penilaian LKPD (Nilai siswa → LKPD → Materi → Sub bab → Verifikasi). */}
       {filter === "lkpd" ? <HasilLkpdGuru /> : null}
 
-      {filter === "lkpd" ? null : urutKiriman.length === 0 ? (
+      {filter === "lkpd" ? null : tampil.length === 0 ? (
         berelasi.length === 0 ? (
           <Empty title="Belum ada kiriman" desc="Kiriman siswa dari latihan dan evaluasi akan muncul di sini." />
         ) : (
@@ -299,18 +359,49 @@ export function HasilKirimanGuru() {
               <tbody>
                 {(() => {
                   let lastTipe: AssignmentType | null = null;
-                  return urutKiriman.map((s) => {
-                    const a = assignments.find((x) => x.id === s.assignmentId);
-                    const tipe = tipeOf(s.assignmentId);
-                    const meta = STATUS_TUGAS_META[statusTugas(s)];
+                  return tampil.map((b) => {
+                    const tipe = tipeBaris(b);
                     // Kelompok jenis tugas hanya pada tampilan baku tanpa sort khusus.
                     const showHead = !sort && filter === "semua" && tipe !== lastTipe;
                     lastTipe = tipe;
+                    const kepala = showHead ? (
+                      <tr><td colSpan={8} className="px-4 pt-3 pb-1 text-[12px] font-semibold uppercase tracking-wide text-ink-faint bg-wash/40">{TIPE_LABEL[tipe]} · {tampil.filter((x) => tipeBaris(x) === tipe).length} baris</td></tr>
+                    ) : null;
+
+                    // Baris roster: siswa kelas yang BELUM mengumpulkan — tetap tampil
+                    // supaya guru melihat seluruh kelas dan tahu siapa yang belum mengerjakan.
+                    if (b.t === "roster") {
+                      return (
+                        <Fragment key={`roster:${b.siswaId}:${b.kelas}`}>
+                          {kepala}
+                          <tr className="table-row bg-wash/40">
+                            <td className="px-4 py-2.5"><b className="text-ink-muted">{b.nama}</b><span className="block text-[12px] text-ink-faint">{b.kelas} · belum mengumpulkan</span></td>
+                            <td className="px-4 py-2.5"><Badge tone={TIPE_TONE[tipe]}>{TIPE_LABEL[tipe]}</Badge></td>
+                            <td className="px-4 py-2.5 text-ink-muted">{judulBaris(b) || "—"}</td>
+                            <td className="px-4 py-2.5">{b.kelas}</td>
+                            <td className="px-4 py-2.5"><Badge tone={STATUS_TUGAS_META["belum"].tone}>{STATUS_TUGAS_META["belum"].label}</Badge></td>
+                            <td className="px-4 py-2.5 font-semibold text-ink-faint">—</td>
+                            <td className="px-4 py-2.5 text-ink-faint">—</td>
+                            <td className="px-4 py-2.5 text-right"><span className="text-[12.5px] text-ink-faint">belum ada</span></td>
+                          </tr>
+                        </Fragment>
+                      );
+                    }
+
+                    const s = b.s;
+                    const a = assignments.find((x) => x.id === s.assignmentId);
+                    const meta = STATUS_TUGAS_META[statusTugas(s)];
+                    // Alasan status ditulis eksplisit: penilaian otomatis sistem BUKAN
+                    // bukti pemeriksaan, sehingga "Belum diperiksa" tidak disalahbaca.
+                    const alasan =
+                      statusTugas(s) === "belum-diperiksa"
+                        ? s.nilai != null
+                          ? "nilai otomatis — belum dicek guru"
+                          : "belum dicek guru"
+                        : null;
                     return (
                       <Fragment key={s.id}>
-                        {showHead ? (
-                          <tr><td colSpan={8} className="px-4 pt-3 pb-1 text-[12px] font-semibold uppercase tracking-wide text-ink-faint bg-wash/40">{TIPE_LABEL[tipe]} · {urutKiriman.filter((x) => tipeOf(x.assignmentId) === tipe).length} kiriman</td></tr>
-                        ) : null}
+                        {kepala}
                         <tr className="table-row">
                           <td className="px-4 py-2.5"><b>{s.siswaNama}</b><span className="block text-[12px] text-ink-muted">{s.kelas}</span></td>
                           <td className="px-4 py-2.5"><Badge tone={TIPE_TONE[tipe]}>{TIPE_LABEL[tipe]}</Badge></td>
@@ -318,8 +409,9 @@ export function HasilKirimanGuru() {
                           <td className="px-4 py-2.5">{s.kelas}</td>
                           <td className="px-4 py-2.5">
                             <Badge tone={meta.tone}>{meta.label}</Badge>
+                            {alasan ? <span className="block text-[11.5px] text-ink-faint">{alasan}</span> : null}
                             {s.feedbackGuru ? <span title="Feedback guru tersimpan"> 💬</span> : null}
-                            {s.cheatCount ? <span title={`${s.cheatCount}x pindah tab tercatat`}> ⚠️</span> : null}
+                            {s.cheatCount ? <span title={`${labelCheat(s.cheatCount)} pelanggaran pindah tab tercatat`}> ⚠️</span> : null}
                           </td>
                           <td className="px-4 py-2.5 font-semibold">{s.nilai ?? "—"}</td>
                           <td className="px-4 py-2.5 text-ink-muted">{fmtDateTime(s.submittedAt)}</td>
@@ -344,8 +436,27 @@ export function HasilKirimanGuru() {
               <Badge tone={TIPE_TONE[currentAssign.tipe]}>{TIPE_LABEL[currentAssign.tipe]}</Badge>
               <span className="text-[13px] text-ink-muted">{currentAssign.judul} · {current.kelas}</span>
               <Badge tone={STATUS_TUGAS_META[statusTugas(current)].tone}>{STATUS_TUGAS_META[statusTugas(current)].label}</Badge>
-              {current.cheatCount ? <Badge tone="red">{current.cheatCount}x pindah tab</Badge> : null}
+              {current.cheatCount ? <Badge tone="red">⚠️ Pindah tab: {labelCheat(current.cheatCount)}</Badge> : null}
             </div>
+            {(() => {
+              const entri = Object.values(current.feedbackAi || {});
+              const eng = entri.map((v) => v?.engine).find((e) => Boolean(e));
+              const model = entri.map((v) => v?.model).find((m) => Boolean(m));
+              if (!eng) return null;
+              const nama =
+                eng === "gemini"
+                  ? `Gemini AI${model ? ` · ${model}` : ""}`
+                  : eng === "otomatis-pg"
+                    ? "kunci jawaban (pilihan ganda)"
+                    : eng === "error"
+                      ? "AI tidak terjangkau → heuristik lokal"
+                      : "heuristik lokal (GEMINI_API_KEY belum diisi)";
+              return (
+                <p className="text-[12px] text-ink-muted">
+                  Sumber penilaian otomatis: <b className="text-ink">{nama}</b> — skor &amp; umpan balik boleh disunting sebelum diterbitkan.
+                </p>
+              );
+            })()}
             {currentAssign.questions.map((q, i) => (
               <div key={q.id} className="rounded-xl border border-line p-3.5">
                 <p className="text-[12.5px] text-ink-muted font-medium">SOAL {i + 1} · {q.tipe.toUpperCase()} · bobot {q.bobot}</p>

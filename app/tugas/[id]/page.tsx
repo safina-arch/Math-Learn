@@ -108,7 +108,10 @@ function Work() {
       let pgScore = 0;
       let pgBobot = 0;
       let totalBobot = 0;
-      const feedbackAi: Record<string, { skor: number; feedback: string; draft: boolean }> = {};
+      const feedbackAi: Record<
+        string,
+        { skor: number; feedback: string; draft: boolean; engine?: string; model?: string }
+      > = {};
       for (const q of a!.questions) {
         totalBobot += q.bobot;
         const ans = answers[q.id] || "";
@@ -121,11 +124,15 @@ function Work() {
             skor: ok ? 100 : 0,
             feedback: ok ? "Jawaban tepat." : "Belum tepat — jawabanmu disimpan dan menunggu pemeriksaan guru.",
             draft: false,
+            engine: "otomatis-pg",
           };
         } else {
           // Uraian/essay: TIDAK dianggap benar oleh sistem. Saran AI/heuristic hanya draf
           // untuk guru — nilai akhir ditentukan setelah guru memeriksa.
           let graded = heuristicGrade(q.teks, ans, q.kunci, q.rubrik, q.bobot);
+          // Jejak mesin penilai: default heuristik lokal, diganti bila API AI sukses.
+          let engine = "heuristic";
+          let model: string | undefined;
           try {
             const r = await fetch("/api/ai/grade", {
               method: "POST",
@@ -134,10 +141,14 @@ function Work() {
             });
             if (r.ok) {
               const j = await r.json();
-              if (typeof j.skor === "number") graded = { skor: j.skor, feedback: j.feedback };
+              if (typeof j.skor === "number") {
+                graded = { skor: j.skor, feedback: j.feedback };
+                engine = j.engine || engine;
+                model = j.model;
+              }
             }
           } catch {}
-          feedbackAi[q.id] = { ...graded, draft: true };
+          feedbackAi[q.id] = { ...graded, draft: true, engine, ...(model ? { model } : {}) };
         }
       }
       // Nilai sementara: hanya dari poin yang benar-benar dinilai sistem (PG).

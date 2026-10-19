@@ -41,7 +41,7 @@ interface Store {
   lkpdTopics: LkpdTopic[];
   /** Progres pengerjaan LKPD per siswa. */
   lkpdProgress: LkpdProgress[];
-  login: (email: string, password: string) => string | null;
+  login: (email: string, password: string) => Promise<string | null>;
   register: (nama: string, email: string, password: string, kelas: string) => string | null;
   logout: () => void;
   impersonate: (id: string) => void;
@@ -110,6 +110,46 @@ function load<T>(k: string, fallback: T): T {
   } catch {
     return fallback;
   }
+}
+
+/** Id perangkat (per browser) — penanda "satu akun hanya satu device dalam satu waktu". */
+const DEVICE_KEY = `${KEY}:device`;
+function perangkatId(): string {
+  try {
+    let d = localStorage.getItem(DEVICE_KEY);
+    if (!d) {
+      d = uid("d");
+      localStorage.setItem(DEVICE_KEY, d);
+    }
+    return d;
+  } catch {
+    return "tanpa-id";
+  }
+}
+
+/**
+ * Klaim sesi perangkat saat LOGIN. Mengembalikan pesan galat bila akun masih
+ * dipakai perangkat LAIN (heartbeat < 60 detik lalu) — login baru ditolak.
+ * Kegagalan jaringan TIDAK memblokir login (gagal terbuka) agar tidak ada yang
+ * terkunci di luar saat server bermasalah.
+ */
+async function klaimSesi(u: { id: string; nama: string; role: string }): Promise<string | null> {
+  try {
+    const r = await fetch("/api/presence", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: u.id, nama: u.nama, role: u.role, deviceId: perangkatId(), claim: true }),
+      cache: "no-store",
+    });
+    const j = (await r.json()) as { blocked?: boolean; sisaDetik?: number };
+    if (j?.blocked) {
+      const sisa = Math.max(1, Math.round(Number(j.sisaDetik) || 60));
+      return `Akun ini sedang dipakai di perangkat lain (terakhir aktif ${sisa} detik lalu). Tunggu ${sisa} detik lagi atau tutup sesi di perangkat tersebut, lalu coba masuk kembali.`;
+    }
+  } catch {
+    // Jaringan bermasalah → login tetap diizinkan.
+  }
+  return null;
 }
 
 /**
@@ -388,7 +428,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         void fetch("/api/presence", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(offline ? { userId: user.id, offline: true } : { userId: user.id, nama: user.nama, role: user.role }),
+          body: JSON.stringify(offline ? { userId: user.id, offline: true } : { userId: user.id, nama: user.nama, role: user.role, deviceId: perangkatId() }),
           keepalive: true,
         });
       } catch {}
@@ -443,10 +483,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       lkpdTopics,
       lkpdProgress,
       syncError,
-      login: (username, password) => {
+      login: async (username, password) => {
         const found = accounts.find((u) => u.email.toLowerCase() === username.toLowerCase().trim());
         if (found && found.password === password) {
           const { password: _p, ...u } = found;
+          // Satu akun satu device: login baru ditolak bila perangkat lain masih aktif.
+          const blok = await klaimSesi(u);
+          if (blok) return blok;
           setUser(u);
           setImpersonating(null);
           return null;
@@ -462,6 +505,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         return null;
       },
       logout: () => {
+        // Lepas kunci sesi perangkat → akun bisa langsung dibuka dari device lain.
+        if (user) {
+          void fetch("/api/presence", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ userId: user.id, offline: true }),
+            keepalive: true,
+          }).catch(() => {});
+        }
         setUser(null);
         setImpersonating(null);
       },

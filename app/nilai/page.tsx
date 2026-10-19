@@ -5,7 +5,7 @@ import { AppShell, Guard } from "@/components/shell";
 import { ExportMenu } from "@/components/export-menu";
 import { Badge, Empty, PageHeader } from "@/components/ui";
 import { barisHasil, statusHasil } from "@/components/lkpd/hasil";
-import { HasilKirimanGuru } from "@/components/kiriman-guru";
+import { RekapNilaiGuru } from "@/components/rekap-nilai-guru";
 import { useStore } from "@/lib/store";
 import { fmtDateTime, statusTugas, TIPE_LABEL } from "@/lib/utils";
 
@@ -20,20 +20,21 @@ export default function NilaiPage() {
 }
 
 /**
- * Guru & admin kini memakai panel penilaian yang SAMA dengan "Hasil siswa"
- * (papan langkah Learning Journey + tabel terurut + modal periksa) sehingga
- * tidak ada kiriman yang terlihat di satu halaman tapi tidak di halaman lain.
+ * Guru & admin membuka REKAP NILAI (`RekapNilaiGuru`) — ringkasan + tabel nilai
+ * yang bisa disaring/diurutkan + ekspor, TANPA modal pemeriksaan. Pemeriksaan
+ * jawaban per soal & penerbitkan nilai tetap di menu "Hasil siswa" (/periksa),
+ * sehingga kedua menu punya peran yang tegas dan tidak tercampur.
  */
 function AdminGrades() {
   const { submissions, assignments, users } = useStore();
   return (
     <div className="page-wrap !px-0 !pb-0 !max-w-none">
       <PageHeader
-        title="Nilai siswa"
-        desc="Saring per jenis/kelas/tugas, urutkan per kolom, lalu periksa & terbitkan nilai ke siswa."
+        title="Nilai siswa — rekap & ekspor"
+        desc="Rekap nilai seluruh tugas (rata-rata, per siswa, belum mengerjakan/belum diperiksa) + ekspor. Untuk memeriksa jawaban per soal dan menerbitkan nilai, buka menu Hasil Siswa."
         right={<ExportMenu submissions={submissions} assignments={assignments} users={users} />}
       />
-      <HasilKirimanGuru />
+      <RekapNilaiGuru />
     </div>
   );
 }

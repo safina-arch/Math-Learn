@@ -11,12 +11,16 @@ function Form() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [err, setErr] = useState<string | null>(null);
+  const [sibuk, setSibuk] = useState(false);
 
   return (
     <form
-      onSubmit={(e) => {
+      onSubmit={async (e) => {
         e.preventDefault();
-        const msg = login(username, password);
+        setErr(null);
+        setSibuk(true);
+        const msg = await login(username, password);
+        setSibuk(false);
         if (msg) setErr(msg);
         else router.push("/dashboard");
       }}
@@ -31,7 +35,7 @@ function Form() {
         <input id="pw" type="password" className="input" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Masukkan kata sandi" autoComplete="current-password" />
       </div>
       {err ? <p className="text-[13px] text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{err}</p> : null}
-      <button className="btn-primary w-full !py-2.5" type="submit">Masuk</button>
+      <button className="btn-primary w-full !py-2.5" type="submit" disabled={sibuk}>{sibuk ? "Memeriksa sesi…" : "Masuk"}</button>
       <p className="text-[12.5px] text-ink-muted text-center">Gunakan username dan kata sandi yang diberikan oleh sekolah.</p>
     </form>
   );
