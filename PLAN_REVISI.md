@@ -310,6 +310,43 @@ Verifikasi: `npm.cmd run build` ✅ lulus (lint + type check, 26 route) → comm
 
 
 
-## Status akhir: SELURUH PLAN SELESAI & LIVE (Gelombang 1–13)
+## Gelombang 14 — 4 permintaan (1 Nov 2026) ✅ build lulus (25 route) · LIVE (commit `a40f9ae`, deploy `dpl_3FCbEjzoaz1mvAroR1GRQBnjN8fr` READY)
+
+### 1. Nilai baru tampil setelah diverifikasi guru (LKPD · latihan · evaluasi)
+- **Popup pasca-kumpul** di ketiganya kini seragam: "**⏳ Nilai sedang menunggu verifikasi guru**" — tanpa angka nilai (pop-up lama latihan sempat menampilkan nilai sementara; tombol juga diganti "Lihat status kiriman" / "Lihat status di menu Nilai").
+- **`/tugas/[id]`**: badge kiriman lama hanya menampilkan angka nilai bila status sudah "Sudah diperiksa"; teks kaki menegaskan nilai baru ditampilkan setelah guru memeriksa.
+- **LKPD** (`/lkpd/[topik]/[sub]`): banner "LKPD sudah dikumpulkan" & banner "Seluruh mission selesai" hanya menyebut angka nilai bila `prog.verifikasi`; selain itu tertulis "nilai masih menunggu verifikasi guru".
+- **LKPD** (`/lkpd/[topik]` daftar submateri) & **`/nilai` siswa**: nilai LKPD/kiriman ditampilkan `🔒` sampai verifikasi (badge statusnya "Belum diperiksa"); angka muncul setelah guru menerbitkan hasil. Panel guru/admin (Periksa, Rekap, Cek LKPD) tidak diubah.
+- Evaluasi: pop-up sudah benar sejak Gelombang 13 — wording diseragamkan.
+
+### 2. Hitungan kecurangan tidak reset saat muat ulang (bug fix)
+- `lib/pengawas.ts`: hitungan disimpan per kegiatan di localStorage (`ml-cheat:<evaluationId>`) setiap kali bertambah; `daftarPengawas()` **memulihkan** hitungan saat halaman dibuka lagi → reload/putus jaringan tidak menghapus jejak. **Muat ulang tetap BUKAN pelanggaran** (keputusan user: hanya pindah tab sungguhan yang dihitung).
+- `components/pengawas-kecurangan.tsx`: hitungan hasil pemulihan ikut ditampilkan ke halaman (`onCount`).
+- Catatan lokal dibersihkan otomatis saat pengerjaan benar-benar selesai (`lepasPengawas` + `selesaiRef`) — hitungan sudah ikut terkirim pada kiriman ke guru.
+- **LKPD kini menampilkan baris "Pelanggaran pindah tab: N×"** (seperti evaluasi) di bawah progres untuk siswa yang sedang mengerjakan — transparan & terlihat tidak reset.
+
+### 3. Tahap LKPD: "Mengomunikasikan" & "Mengevaluasi" dipisah (5 → 6 tahap)
+- `lib/lkpd.ts` `LKPD_TAHAP` kini 6 tahap: … Menalar → **Mengomunikasikan** 💬 → **Mengevaluasi** 📝 (`missionBaru()` otomatis memakai tahap ke-6 di editor Kelola).
+- Seed (`lib/lkpd-seed.ts`): 3 submateri "Perbandingan" — mission m5 dipecah: "Mengomunikasikan" + mission baru "Mengevaluasi" (blok refleksi "Evaluasi dirimu" + essay "Rencana tindak lanjut", keduanya dinilai guru).
+- **Migrasi data lama**: `pisahTahapEvaluasi()` (idempoten) dijalankan otomatis oleh store untuk guru/admin — misi gabungan lama diganti nama + mission "Mengevaluasi" baru disisipkan (id deterministik `ms-evaluasi-<subtopicId>`; blok & jawaban lama TIDAK disentuh → progres siswa aman), lalu disinkronkan ke siswa.
+- Salinan "5 tahap" diperbarui: hub LKPD, editor Kelola, komentar halaman journey.
+
+### 4. Emoji gaya modern konsisten (Noto Color Emoji)
+- Apple Color Emoji berlisensi tertutup → dipilih **Noto Color Emoji** (Google, OFL): font link di `app/layout.tsx` + `--font-sans` diperluas (`app/globals.css`) sehingga emoji di semua perangkat tampil warna & konsisten (gaya modern mirip iOS; perangkat Apple tetap memakai emoji bawaannya sebagai fallback).
+
+### ⚠️ Temuan infrastruktur di luar kode: project Supabase HILANG
+- Saat verifikasi, `GET /api/sync` → **500 `TypeError: fetch failed`**; DNS publik (8.8.8.8 & 1.1.1.1) menjawab **NXDOMAIN** untuk `vzllljhkbtiyskjiucia.supabase.co` → project Supabase sudah **dihapus/paused permanen** (bukan bug kode — `/api/sync` tidak disentuh Gelombang 14).
+- Dampak: aplikasi tetap jalan penuh memakai localStorage per perangkat (desain fallback), tetapi **sinkronisasi antar-perangkat, kunci device, cheat-log server, dan upload file mati** sampai Supabase baru aktif.
+- SQL pemulihan siap di repo: `supabase/schema.sql` → `sync-migration.sql` → `migration-revisi.sql` → `migration-lkpd.sql`. Env yang harus diganti bila project baru: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` (Vercel + `.env.local`).
+
+### Verifikasi (deploy `dpl_3FCbEjzoaz1mvAroR1GRQBnjN8fr`, READY)
+- `tsc --noEmit` exit 0; `npm run build` lulus (25 route).
+- String chunk produksi 10/10: `Nilai sedang menunggu verifikasi guru`, `Pelanggaran pindah tab:`, `masih menunggu verifikasi guru`, `Nilai ditampilkan setelah guru memeriksa`, `Lihat status kiriman`, `Lihat status di menu Nilai`, `Evaluasi dirimu`, `Rencana tindak lanjut`, `ml-cheat:`, `Noto Color Emoji` (CSS).
+- `GET /api/version` → `dpl_3FCbEjzoaz1mvAroR1GRQBnjN8fr` (banner versi up-to-date); `/`, `/nilai`, `/lkpd`, `/login`, `/evaluasi`, `/latihan` → 200.
+- `POST /api/ai/grade` → `engine:"heuristic"` 200 (tanpa key). `GET /api/sync` → **500 (Supabase hilang — lihat temuan di atas)**.
+
+
+
+## Status akhir: SELURUH PLAN SELESAI & LIVE (Gelombang 1–14)
 
 Tidak ada langkah tersisa. Perubahan berikutnya: edit kode → `git push origin main` → Vercel auto-build (env sudah tersimpan di project Vercel). Kredensial tersimpan di `.env.local` (ter-ignore git).
