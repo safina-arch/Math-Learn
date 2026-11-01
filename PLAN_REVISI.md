@@ -310,7 +310,7 @@ Verifikasi: `npm.cmd run build` ✅ lulus (lint + type check, 26 route) → comm
 
 
 
-## Gelombang 14 — 4 permintaan (1 Nov 2026) ✅ build lulus (25 route) · LIVE (commit `a40f9ae`, deploy `dpl_3FCbEjzoaz1mvAroR1GRQBnjN8fr` READY)
+## Gelombang 14 — 4 permintaan (1 Nov 2026) ✅ build lulus (25 route) · LIVE (commit `a40f9ae` + fix sync `3c5f67f`, deploy `dpl_3g9bstumhyH945KFS5ndseppQLG9` READY)
 
 ### 1. Nilai baru tampil setelah diverifikasi guru (LKPD · latihan · evaluasi)
 - **Popup pasca-kumpul** di ketiganya kini seragam: "**⏳ Nilai sedang menunggu verifikasi guru**" — tanpa angka nilai (pop-up lama latihan sempat menampilkan nilai sementara; tombol juga diganti "Lihat status kiriman" / "Lihat status di menu Nilai").
@@ -334,16 +334,22 @@ Verifikasi: `npm.cmd run build` ✅ lulus (lint + type check, 26 route) → comm
 ### 4. Emoji gaya modern konsisten (Noto Color Emoji)
 - Apple Color Emoji berlisensi tertutup → dipilih **Noto Color Emoji** (Google, OFL): font link di `app/layout.tsx` + `--font-sans` diperluas (`app/globals.css`) sehingga emoji di semua perangkat tampil warna & konsisten (gaya modern mirip iOS; perangkat Apple tetap memakai emoji bawaannya sebagai fallback).
 
-### ⚠️ Temuan infrastruktur di luar kode: project Supabase HILANG
-- Saat verifikasi, `GET /api/sync` → **500 `TypeError: fetch failed`**; DNS publik (8.8.8.8 & 1.1.1.1) menjawab **NXDOMAIN** untuk `vzllljhkbtiyskjiucia.supabase.co` → project Supabase sudah **dihapus/paused permanen** (bukan bug kode — `/api/sync` tidak disentuh Gelombang 14).
-- Dampak: aplikasi tetap jalan penuh memakai localStorage per perangkat (desain fallback), tetapi **sinkronisasi antar-perangkat, kunci device, cheat-log server, dan upload file mati** sampai Supabase baru aktif.
-- SQL pemulihan siap di repo: `supabase/schema.sql` → `sync-migration.sql` → `migration-revisi.sql` → `migration-lkpd.sql`. Env yang harus diganti bila project baru: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` (Vercel + `.env.local`).
+### ⚠️ Temuan infrastruktur: project Supabase sempat HILANG → dipulihkan user (1 Nov 2026)
+- Saat verifikasi awal, `GET /api/sync` → **500 `TypeError: fetch failed`**; DNS publik menjawab **NXDOMAIN** untuk `vzllljhkbtiyskjiucia.supabase.co` → project sempat dihapus/paused (bukan bug kode). Dampak sementara: fallback localStorage per perangkat tetap jalan; sinkron antar-perangkat, kunci device, cheat-log server, dan upload file mati.
+- **User memulihkan project sendiri** → DNS kembali hidup (`104.18.38.10`), `GET /api/sync` → **200 `configured:true`**, data utuh: 41 users · 28 submissions · 41 lkpdProgress · 69 notifications · 66 cheatLogs.
 
-### Verifikasi (deploy `dpl_3FCbEjzoaz1mvAroR1GRQBnjN8fr`, READY)
+### 🔧 Fix sync LKPD pasca-pemulihan (commit `3c5f67f`) — POST `lkpdTopics`/`lkpdProgress` selalu 500
+- **Reproduksi & akar masalah**: `POST /api/sync {resource:"lkpdTopics"}` → **500 `new row … violates check constraint "app_state_key_check"`**. Constraint `app_state.key` di produksi (9 key lama: materials, assignments, submissions, announcements, notifications, cheatLogs, events, users, presence) **menolak key `lkpdTopics`/`lkpdProgress`** — padahal `app/api/sync/route.ts` (POST) masih menempatkan **baris langsung + wadah dalam SATU upsert** untuk resource wadah → seluruh tulis gagal total (wadah pun ikut gagal) → banner admin "lkpdTopics: HTTP 500" + seluruh 12 titik `persistShared("lkpdProgress", …)` (nilai siswa → guru) ikut macet. (Sejak Gelombang 9 desain wadah sudah ada di GET; baris legacy `lkpdTopics`/`lkpdProgress` lama di DB ikut terbaca GET sehingga data lama masih tampil — tapi tulisan baru tidak pernah masuk.)
+- **Fix kode (tanpa SQL)** — `app/api/sync/route.ts` POST: resource `KEY_WADAH` (`lkpdTopics`/`lkpdProgress`) **HANYA ditulis ke wadah `presence`** (baris langsung tidak lagi ikut target upsert; baca baris lama juga dilewati); resource lain tetap baris langsung (+ wadah bila ada tombstone baru). GET tidak berubah: union `wadah ∪ baris legacy` per baris.
+- **Fix stempel migrasi** — `lib/lkpd.ts` `pisahTahapEvaluasi()` kini memberi **`revisiAt: nowIso()`** pada topik yang berubah; merge server memakai stempel terbaru saat id sama → versi 6-tahap (wadah) **menang atas baris legacy** berjudul gabungan, tanpa perlu menghapus baris lama (tidak ada API SQL).
+- **Verifikasi**: `POST lkpdTopics`/`lkpdProgress`/`users` → semua **200**; sesi browser Admin memicu migrasi → `GET /api/sync` kini **6 mission per submateri** (`… Menalar → Mengomunikasikan → Mengevaluasi`), banner "HTTP 500" hilang, console bersih.
+
+### Verifikasi (deploy awal `dpl_3FCbEjzoaz1mvAroR1GRQBnjN8fr` + fix `dpl_3g9bstumhyH945KFS5ndseppQLG9`, READY)
 - `tsc --noEmit` exit 0; `npm run build` lulus (25 route).
 - String chunk produksi 10/10: `Nilai sedang menunggu verifikasi guru`, `Pelanggaran pindah tab:`, `masih menunggu verifikasi guru`, `Nilai ditampilkan setelah guru memeriksa`, `Lihat status kiriman`, `Lihat status di menu Nilai`, `Evaluasi dirimu`, `Rencana tindak lanjut`, `ml-cheat:`, `Noto Color Emoji` (CSS).
-- `GET /api/version` → `dpl_3FCbEjzoaz1mvAroR1GRQBnjN8fr` (banner versi up-to-date); `/`, `/nilai`, `/lkpd`, `/login`, `/evaluasi`, `/latihan` → 200.
-- `POST /api/ai/grade` → `engine:"heuristic"` 200 (tanpa key). `GET /api/sync` → **500 (Supabase hilang — lihat temuan di atas)**.
+- `GET /api/version` → `dpl_3g9bstumhyH945KFS5ndseppQLG9`; `/`, `/nilai`, `/lkpd`, `/login`, `/evaluasi`, `/latihan` → 200. `POST /api/ai/grade` → `engine:"heuristic"` 200 (tanpa key).
+- **E2E browser pasca-fix**: Admin → `/lkpd` tanpa error, migrasi tersistor; siswa `2601` → journey `/lkpd/perbandingan/pb-dasar` menampilkan **"Urutan wajib: Mengamati → Menanya → Mengumpulkan Informasi → Menalar → Mengomunikasikan → Mengevaluasi"**, hub "0/18 mission", baris "Pelanggaran pindah tab: " tampil; `/nilai` siswa menampilkan **"Menunggu pemeriksaan guru" / "menunggu guru memeriksa"** (nilai terkunci sampai verifikasi); logout bersih.
+- **Presence device-lock PASS** (setelah restore): claim devA ok → claim devB `blocked sisaDetik:59` → `offline:true` ok → claim devB lolos → cleanup ok.
 
 
 
