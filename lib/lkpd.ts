@@ -1,5 +1,5 @@
 import type { LkpdBlock, LkpdMission, LkpdProgress, LkpdSubtopic, LkpdTopic } from "./types";
-import { uid } from "./utils";
+import { nowIso, uid } from "./utils";
 
 /** Enam tahap pembelajaran (saintifik) — dipakai sebagai template mission baru. */
 export const LKPD_TAHAP = [
@@ -301,13 +301,13 @@ const JUDUL_GABUNGAN = /mengomunikasikan\s*&\s*mengevaluasi/i;
  */
 export function pisahTahapEvaluasi(list: LkpdTopic[]): LkpdTopic[] | null {
   let berubah = false;
-  const hasil = list.map((t) => ({
-    ...t,
-    subtopics: t.subtopics.map((s) => {
+  const hasil = list.map((t) => {
+    let sentuh = false;
+    const subtopics = t.subtopics.map((s) => {
       const sudahAda = s.missions.some((m) => m.id === idMissionEvaluasi(s.id));
       const idx = s.missions.findIndex((m) => JUDUL_GABUNGAN.test(m.judul));
       if (sudahAda || idx < 0) return s;
-      berubah = true;
+      sentuh = true;
       const missions = s.missions.slice();
       missions[idx] = {
         ...missions[idx],
@@ -316,7 +316,12 @@ export function pisahTahapEvaluasi(list: LkpdTopic[]): LkpdTopic[] | null {
       };
       missions.splice(idx + 1, 0, missionMengevaluasi(idMissionEvaluasi(s.id)));
       return { ...s, missions };
-    }),
-  }));
+    });
+    if (!sentuh) return t;
+    berubah = true;
+    // Stempel revisi BARU: baris legacy lama di server (key `lkpdTopics` langsung)
+    // memakai stempel lama — versi terpecah harus memenangkan merge saat id sama.
+    return { ...t, revisiAt: nowIso(), subtopics };
+  });
   return berubah ? hasil : null;
 }

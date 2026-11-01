@@ -211,19 +211,25 @@ export async function POST(req: Request) {
           : gabungTopik(wadah.lkpdTopics, body.data, hapus.lkpdTopics || {}) || [];
     }
 
-    const { data: barisLama, error: baca } = await sb.from("app_state").select("data").eq("key", resource).maybeSingle();
-    if (baca) return NextResponse.json({ error: baca.message }, { status: 500 });
-    const akhir = gabungBaris(resource, barisLama?.data, body.data, hapus[resource] || {});
+    // ⚠️ Data LKPD HANYA ditulis ke wadah. Constraint `app_state.key` produksi
+    // tidak mengizinkan key `lkpdTopics`/`lkpdProgress` — menempatkan baris
+    // langsung dalam satu upsert membuat SELURUH tulis gagal (500 "violates
+    // check constraint app_state_key_check", wadah pun ikut gagal). Itulah bug
+    // banner "lkpdTopics: HTTP 500" + macetnya sinkron nilai LKPD.
+    const wadahOnly = KEY_WADAH.has(resource);
+    let akhir: unknown[] = body.data;
+    if (!wadahOnly) {
+      const { data: barisLama, error: baca } = await sb.from("app_state").select("data").eq("key", resource).maybeSingle();
+      if (baca) return NextResponse.json({ error: baca.message }, { status: 500 });
+      akhir = gabungBaris(resource, barisLama?.data, body.data, hapus[resource] || {});
+    }
 
     // Wadah hanya disentuh bila ada perubahan di dalamnya (data LKPD / tombstone baru)
     // — mengurangi antrean tulis yang saling menimpa saat 50+ klien aktif.
-    const perluWadah = KEY_WADAH.has(resource) || hapusBaru.length > 0;
-    const target = perluWadah
-      ? [
-          { key: resource, data: akhir, updated_at: waktu },
-          { key: WADAH, data: wadah, updated_at: waktu },
-        ]
-      : [{ key: resource, data: akhir, updated_at: waktu }];
+    const perluWadah = wadahOnly || hapusBaru.length > 0;
+    const target: Baris[] = [];
+    if (!wadahOnly) target.push({ key: resource, data: akhir, updated_at: waktu });
+    if (perluWadah) target.push({ key: WADAH, data: wadah, updated_at: waktu });
     const { error } = await sb.from("app_state").upsert(target, { onConflict: "key" });
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ ok: true });
