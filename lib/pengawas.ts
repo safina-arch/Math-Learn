@@ -46,6 +46,33 @@ export type KeadaanPengawas = {
 
 const KEADAAN_AWAL: KeadaanPengawas = { terkunci: false, jumlah: 0, jenis: "latihan", peringatan: null };
 
+/* ————————————————————————————————————————————————
+   PERSISTENSI HITUNGAN (Gelombang 14)
+   Hitungan pelanggaran disimpan per kegiatan di localStorage sehingga
+   muat ulang / putus jaringan TIDAK meresetnya ke 0. Muat ulang halaman
+   sendiri tetap BUKAN pelanggaran — hanya angkanya yang dipertahankan.
+   ———————————————————————————————————————————————— */
+const KUNCI_CHEAT = (id: string) => `ml-cheat:${id}`;
+
+/** Baca hitungan tersimpan untuk sebuah kegiatan (0 bila tidak ada). */
+export function bacaHitunganTersimpan(evaluationId: string): number {
+  try {
+    const n = Number(localStorage.getItem(KUNCI_CHEAT(evaluationId)) || 0);
+    return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function simpanHitungan(evaluationId: string, n: number) {
+  try { localStorage.setItem(KUNCI_CHEAT(evaluationId), String(n)); } catch { /* storage penuh/di-block — hitungan tetap di memori */ }
+}
+
+/** Bersihkan catatan lokal setelah kiriman benar-benar tersimpan (pengerjaan selesai). */
+export function hapusHitunganTersimpan(evaluationId: string) {
+  try { localStorage.removeItem(KUNCI_CHEAT(evaluationId)); } catch { /* diabaikan */ }
+}
+
 let ktx: KonteksPengawas | null = null;
 let keadaan: KeadaanPengawas = KEADAAN_AWAL;
 let pasang = false;
@@ -107,6 +134,8 @@ function catat(tipe: Exclude<TipeKecurangan, "blok">) {
   tinggal = true;
   terakhir = now;
   s.countRef.current += 1;
+  // Hitungan ikut disimpan lokal → muat ulang tidak menghapus jejak.
+  simpanHitungan(s.evaluationId, s.countRef.current);
   s.onCount?.(s.countRef.current);
   const menit = Math.max(1, Math.round((now - (s.mulaiRef.current || now)) / 60000));
   const baris: BarisCheat = {
@@ -180,6 +209,10 @@ function lepasListener() {
 
 /** Daftarkan pengerjaan yang sedang berjalan → kunci menu + aktifkan penghitungan. */
 export function daftarPengawas(k: KonteksPengawas) {
+  // Pulihkan hitungan dari penyimpanan lokal (Gelombang 14): reload/putus
+  // jaringan saat pengerjaan berlangsung tidak mereset hitungan ke 0.
+  const tersimpan = bacaHitunganTersimpan(k.evaluationId);
+  if (tersimpan > k.countRef.current) k.countRef.current = tersimpan;
   ktx = k;
   tinggal = false;
   pasangListener();
@@ -206,6 +239,9 @@ export function lepasPengawas() {
   if (s.catatNavigasi && jalan && jalan !== s.halaman && !s.selesaiRef?.current && !s.refreshRef?.current) {
     catat("navigasi"); // siswa berpindah halaman → halaman pengerjaan unmount
   }
+  // Pengerjaan benar-benar selesai (sudah dikumpulkan) → catatan lokal dibersihkan
+  // karena hitungan sudah ikut tersimpan di kiriman yang dikirim ke guru.
+  if (s.selesaiRef?.current) hapusHitunganTersimpan(s.evaluationId);
   ktx = null;
   lepasListener();
   // `peringatan` TIDAK direset: peringatan yang baru terjadi saat berpindah halaman

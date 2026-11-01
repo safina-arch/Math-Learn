@@ -80,6 +80,9 @@ export function PengawasKecurangan({
       onCount,
       catatLog: addCheatLog,
     });
+    // Hitungan yang dipulihkan dari penyimpanan lokal ikut tampil di halaman
+    // (mis. setelah muat ulang saat pengerjaan masih berlangsung).
+    if (countRef.current > 0) onCount?.(countRef.current);
     return () => lepasPengawas();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aktif, evaluationId, jenis, countRef, mulaiRef, catatNavigasi]);

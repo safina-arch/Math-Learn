@@ -28,7 +28,7 @@ function blokBaru(tipe: LkpdBlockTipe): LkpdBlock {
   return b;
 }
 
-/** Editor LKPD: kelola mission (default 5 tahap) + content blocks + preview. */
+/** Editor LKPD: kelola mission (default 6 tahap) + content blocks + preview. */
 export default function KelolaLkpdPage() {
   const params = useParams<{ topik: string; sub: string }>();
   const router = useRouter();
@@ -181,7 +181,7 @@ export default function KelolaLkpdPage() {
                   </div>
                 ))}
                 <button className="btn-ghost w-full !py-1.5 !text-[12.5px]" onClick={tambahMission}>+ Tambah Mission</button>
-                <p className="text-[11.5px] text-ink-faint px-1 pt-1">Default: 5 tahap (Mengamati → … → Mengevaluasi). Mission tambahan boleh ditambahkan sesuai kebutuhan materi.</p>
+                <p className="text-[11.5px] text-ink-faint px-1 pt-1">Default: 6 tahap (Mengamati → … → Mengomunikasikan → Mengevaluasi). Mission tambahan boleh ditambahkan sesuai kebutuhan materi.</p>
               </div>
 
               {/* Editor mission */}

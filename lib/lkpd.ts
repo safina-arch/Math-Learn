@@ -1,13 +1,14 @@
 import type { LkpdBlock, LkpdMission, LkpdProgress, LkpdSubtopic, LkpdTopic } from "./types";
 import { uid } from "./utils";
 
-/** Lima tahap pembelajaran default — dipakai sebagai template mission baru. */
+/** Enam tahap pembelajaran (saintifik) — dipakai sebagai template mission baru. */
 export const LKPD_TAHAP = [
   { key: "mengamati", judul: "Mengamati", ikon: "👀", desc: "Mengamati fenomena sebelum definisi atau rumus diberikan." },
   { key: "menanya", judul: "Menanya", ikon: "❓", desc: "Membangun pertanyaan dari apa yang diamati." },
   { key: "mengumpulkan", judul: "Mengumpulkan Informasi", ikon: "🔎", desc: "Mengumpulkan data lewat aktivitas interaktif." },
   { key: "menalar", judul: "Menalar", ikon: "🧠", desc: "Menganalisis dan menemukan pola — konsep formal menyusul." },
-  { key: "mengomunikasikan", judul: "Mengomunikasikan & Mengevaluasi", ikon: "💬", desc: "Menjelaskan strategi, mengevaluasi, dan refleksi." },
+  { key: "mengomunikasikan", judul: "Mengomunikasikan", ikon: "💬", desc: "Menjelaskan strategi dan cara penyelesaianmu dengan bahasa sendiri." },
+  { key: "mengevaluasi", judul: "Mengevaluasi", ikon: "📝", desc: "Menilai proses & hasil belajarmu sendiri dan menyusun rencana perbaikan." },
 ] as const;
 
 /** Mission baru dari template tahap (atau tahap kustom bila melebihi 5). */
@@ -252,4 +253,70 @@ export function missionTerjawab(
     if (!kartu.length || kartu.some((k) => !di.includes(k.id))) kurang.push(b.judul || "Aktivitas seret");
   }
   return { boleh: kurang.length === 0, kurang };
+}
+
+/* ————————————————————————————————————————————————
+   MIGRASI GEL. 14 — "Mengomunikasikan & Mengevaluasi" dipecah jadi dua
+   mission terpisah: "Mengomunikasikan" (diperbarui di tempat) + mission
+   baru "Mengevaluasi" (blok refleksi & essay — dinilai guru).
+   Idempoten: begitu mission "Mengevaluasi" ada, submateri tidak diubah lagi.
+   ———————————————————————————————————————————————— */
+
+/** Id mission "Mengevaluasi" hasil pemisahan (deterministik per submateri). */
+export function idMissionEvaluasi(subtopicId: string): string {
+  return `ms-evaluasi-${subtopicId}`;
+}
+
+/** Mission "Mengevaluasi" bawaan: dua blok terbuka (dinilai langsung guru). */
+export function missionMengevaluasi(idMission: string): LkpdMission {
+  return {
+    id: idMission,
+    judul: "Mengevaluasi",
+    ikon: "📝",
+    deskripsi: "Nilai proses & hasil belajarmu sendiri sebelum lanjut ke materi berikutnya.",
+    blok: [
+      {
+        id: `${idMission}-b1`,
+        tipe: "refleksi",
+        judul: "Evaluasi dirimu",
+        teks: "Bagian mana yang sudah kamu kuasai dan bagian mana yang masih perlu dilatih? Jelaskan dengan bahasamu sendiri (2–3 kalimat).",
+      },
+      {
+        id: `${idMission}-b2`,
+        tipe: "essay",
+        judul: "Rencana tindak lanjut",
+        teks: "Tuliskan satu langkah konkret yang akan kamu lakukan minggu ini untuk memperkuat materi ini.",
+      },
+    ],
+  };
+}
+
+/** Pola judul mission lama hasil gabungan ("Mengomunikasikan & Mengevaluasi"). */
+const JUDUL_GABUNGAN = /mengomunikasikan\s*&\s*mengevaluasi/i;
+
+/**
+ * Pecah tahap gabungan pada data lama (idempoten).
+ * Mengembalikan daftar topik BARU bila ada perubahan, atau `null` bila tidak ada
+ * apa pun untuk diubah. Blok/jawaban lama tidak disentuh → aman untuk progres siswa.
+ */
+export function pisahTahapEvaluasi(list: LkpdTopic[]): LkpdTopic[] | null {
+  let berubah = false;
+  const hasil = list.map((t) => ({
+    ...t,
+    subtopics: t.subtopics.map((s) => {
+      const sudahAda = s.missions.some((m) => m.id === idMissionEvaluasi(s.id));
+      const idx = s.missions.findIndex((m) => JUDUL_GABUNGAN.test(m.judul));
+      if (sudahAda || idx < 0) return s;
+      berubah = true;
+      const missions = s.missions.slice();
+      missions[idx] = {
+        ...missions[idx],
+        judul: "Mengomunikasikan",
+        deskripsi: "Jelaskan temuan dan strategi penyelesaianmu dengan bahasa sendiri.",
+      };
+      missions.splice(idx + 1, 0, missionMengevaluasi(idMissionEvaluasi(s.id)));
+      return { ...s, missions };
+    }),
+  }));
+  return berubah ? hasil : null;
 }

@@ -85,8 +85,12 @@ function Content() {
                       <p className="text-[14.5px] font-medium">{r.submateri}</p>
                       <p className="muted !text-[12.5px]">{r.materi} · {r.progres} · {fmtDateTime(r.updatedAt)}</p>
                     </div>
-                    <span className="ml-auto text-[22px] font-bold" title={r.nilai == null ? "Belum dinilai" : undefined}>
-                      {r.nilai ?? "—"}
+                    {/* Nilai LKPD hanya tampil setelah diverifikasi guru (Gelombang 14). */}
+                    <span
+                      className="ml-auto text-[18px] font-bold"
+                      title={r.verifikasi ? (r.nilai == null ? "Belum dinilai" : "Sudah diverifikasi guru") : "Nilai ditampilkan setelah guru memeriksa"}
+                    >
+                      {r.verifikasi ? (r.nilai ?? "—") : "🔒"}
                     </span>
                     <Badge tone={st.tone}>{st.label}</Badge>
                   </div>
@@ -119,7 +123,13 @@ function Content() {
                       <p className="text-[14.5px] font-medium">{a?.judul || <span className="italic text-ink-faint">Tugas sudah dihapus</span>}</p>
                       <p className="muted !text-[12.5px]">{a ? TIPE_LABEL[a.tipe] : ""} · dikumpulkan {fmtDateTime(s.submittedAt)}</p>
                     </div>
-                    <span className="ml-auto text-[20px] font-bold">{s.nilai ?? "—"}</span>
+                    {/* Nilai kiriman terkunci sampai guru memeriksa (Gelombang 14). */}
+                    <span
+                      className="ml-auto text-[18px] font-bold"
+                      title={st === "sudah" ? undefined : "Nilai ditampilkan setelah guru memeriksa"}
+                    >
+                      {st === "sudah" ? (s.nilai ?? "—") : "🔒"}
+                    </span>
                     <Badge tone={st === "sudah" ? "green" : "amber"}>
                       {st === "sudah" ? "Sudah diperiksa ✓" : "Belum diperiksa"}
                     </Badge>

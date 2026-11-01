@@ -124,7 +124,13 @@ export default function TopikPage() {
                         </>
                       ) : (
                         <>
-                          <span className="text-[17px] font-bold">{nilaiSendiri ?? "—"}</span>
+                          {/* Nilai siswa hanya tampil setelah diverifikasi guru (Gelombang 14). */}
+                          <span
+                            className="text-[17px] font-bold"
+                            title={pr?.verifikasi ? undefined : "Nilai ditampilkan setelah guru memeriksa"}
+                          >
+                            {pr?.verifikasi ? (nilaiSendiri ?? "—") : nilaiSendiri != null ? "🔒" : "—"}
+                          </span>
                           {nilaiSendiri != null ? (
                             <Badge tone={pr?.verifikasi ? "green" : "amber"}>{pr?.verifikasi ? "Sudah diperiksa ✓" : "Belum diperiksa"}</Badge>
                           ) : (

@@ -3,7 +3,9 @@
 @tailwind utilities;
 
 :root {
-  --font-sans: "Plus Jakarta Sans", system-ui, sans-serif;
+  /* "Noto Color Emoji" menstandarkan tampilan emoji di semua perangkat
+     (gaya modern mirip iOS; Apple Color Emoji sendiri berlisensi tertutup). */
+  --font-sans: "Plus Jakarta Sans", "Noto Color Emoji", system-ui, sans-serif;
 }
 
 html {

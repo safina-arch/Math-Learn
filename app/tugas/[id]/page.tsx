@@ -202,7 +202,7 @@ function Work() {
         <Badge tone="purple">{a.tipe.toUpperCase()}</Badge>
         <Badge>{a.kelas}</Badge>
         {already ? <Badge tone="green">Sudah dikumpulkan</Badge> : null}
-        {already ? <Badge tone={stTugas === "sudah" ? "green" : "amber"}>{already.nilai != null ? `Nilai sementara ${already.nilai} · ` : ""}{STATUS_TUGAS_META[stTugas].label}</Badge> : null}
+        {already ? <Badge tone={stTugas === "sudah" ? "green" : "amber"}>{stTugas === "sudah" && already.nilai != null ? `Nilai ${already.nilai} · ` : ""}{STATUS_TUGAS_META[stTugas].label}</Badge> : null}
         {draftRestored && !already ? <Badge tone="blue">Draf dipulihkan</Badge> : null}
         {cheatTampil > 0 ? <Badge tone="red">{cheatTampil}× pindah tab tercatat</Badge> : null}
       </div>
@@ -287,9 +287,9 @@ function Work() {
           </div>
         )}
         <p className="muted">
-          Pilihan ganda dinilai otomatis dan nilainya tampil sebagai <b>nilai sementara</b>. Uraian &amp; essay{" "}
-          <b>tidak dianggap benar oleh sistem</b> — penilaian akhir setelah guru memeriksa. Jawabanmu tersimpan otomatis
-          sebagai draf sampai dikumpulkan.
+          Pilihan ganda dinilai otomatis oleh sistem, tetapi <b>nilainya baru ditampilkan setelah guru memeriksa</b> dan
+          menerbitkan hasil. Uraian &amp; essay <b>tidak dianggap benar oleh sistem</b> — penilaian akhir setelah guru
+          memeriksa. Jawabanmu tersimpan otomatis sebagai draf sampai dikumpulkan.
         </p>
       </div>
 
@@ -308,19 +308,22 @@ function Work() {
 
       <Modal open={!!result} onClose={() => { setResult(null); router.push("/nilai"); }} title="🎉 Jawaban berhasil dikirim">
         <div className="text-center py-1">
-          <p className="text-[44px] font-bold tracking-tight">{result?.nilai}</p>
-          <p className="text-[13px] font-semibold uppercase tracking-wide text-ink-faint -mt-2">Nilai sementara</p>
-          <p className="muted mt-2">Pilihan ganda benar {result?.pgBenar} soal{a.tipe !== "latihan" ? ". Uraian & essay belum dinilai sistem" : ""}.</p>
+          <p className="text-[42px] leading-none">✅</p>
+          <p className="text-[17px] font-bold mt-2">Jawabanmu sudah kami terima</p>
+          <p className="muted mt-1 max-w-[420px] mx-auto">
+            Seluruh jawaban <b>{a.judul}</b> berhasil dikirim dan tersimpan. Jawaban tidak bisa diubah lagi.
+          </p>
         </div>
         <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-center">
-          <p className="text-[15px] font-semibold text-amber-900">⏳ Menunggu pemeriksaan guru</p>
+          <p className="text-[15px] font-semibold text-amber-900">⏳ Nilai sedang menunggu verifikasi guru</p>
           <p className="text-[13px] text-amber-800 mt-1">
-            Status kirimanmu: <b>Belum diperiksa</b> — nilai akhir &amp; feedback muncul setelah guru memeriksa jawabanmu.
+            Nilai <b>tidak ditampilkan sekarang</b> — guru akan memeriksa jawabanmu lebih dulu, lalu nilai &amp; feedback
+            muncul di menu <b>Nilai</b>.
           </p>
           <p className="text-[12.5px] text-amber-800 mt-1">Tugas ini sekali kerja — jawaban tidak bisa diubah lagi.</p>
         </div>
         <div className="mt-4 flex gap-2">
-          <button className="btn-primary flex-1" onClick={() => router.push("/nilai")}>Lihat nilai & status</button>
+          <button className="btn-primary flex-1" onClick={() => router.push("/nilai")}>Lihat status kiriman</button>
           <button className="btn-ghost" onClick={() => setResult(null)}>Tetap di sini</button>
         </div>
       </Modal>

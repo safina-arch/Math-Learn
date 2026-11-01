@@ -17,7 +17,7 @@ import type {
 } from "./types";
 import { AUTH_USERS, SEED_ANNOUNCEMENTS, SEED_ASSIGNMENTS, SEED_EVENTS, SEED_MATERIALS } from "./seed";
 import { SEED_LKPD_TOPICS } from "./lkpd-seed";
-import { nilaiKerja } from "./lkpd";
+import { nilaiKerja, pisahTahapEvaluasi } from "./lkpd";
 import { nowIso, uid } from "./utils";
 
 /** Rekaman akun lengkap (password disimpan agar login bisa diverifikasi di client). */
@@ -320,6 +320,23 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     setImpersonating(storedImpersonating && accs.some((account) => account.id === storedImpersonating.id) ? storedImpersonating : null);
     setReady(true);
   }, []);
+
+  /**
+   * Migrasi Gelombang 14: tahap "Mengomunikasikan & Mengevaluasi" pada katalog
+   * lama dipecah menjadi dua mission (Mengomunikasikan + Mengevaluasi).
+   * Hanya guru/admin yang menjalankan & menyimpan hasilnya — katalog LKPD milik
+   * guru/admin, sedangkan siswa menerimanya lewat sinkron. Idempoten: topik yang
+   * sudah terpecah tidak diubah lagi.
+   */
+  useEffect(() => {
+    if (!ready || !user || user.role === "siswa") return;
+    setLkpdTopics((p) => {
+      const hasil = pisahTahapEvaluasi(p);
+      if (!hasil) return p;
+      void persistShared("lkpdTopics", hasil, user.role);
+      return hasil;
+    });
+  }, [ready, user, lkpdTopics]);
 
   useEffect(() => {
     if (!ready) return;

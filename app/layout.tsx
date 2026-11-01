@@ -31,6 +31,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&display=swap"
           rel="stylesheet"
         />
+        {/* Emoji warna gaya modern (mirip iOS) yang konsisten di semua perangkat.
+            Apple Color Emoji berlisensi tertutup — Noto Color Emoji (Google, OFL)
+            adalah padanan terdekat yang legal dipasang di web. */}
+        <link
+          href="https://fonts.googleapis.com/css2?family=Noto+Color+Emoji&display=swap"
+          rel="stylesheet"
+        />
       </head>
       <body style={{ fontFamily: "var(--font-sans)" }}><Providers>{children}</Providers></body>
     </html>

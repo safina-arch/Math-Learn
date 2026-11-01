@@ -12,8 +12,10 @@ import { useStore } from "@/lib/store";
 import { cariProgress, missionTerjawab, nilaiSubtopic, progresSubtopic } from "@/lib/lkpd";
 
 /**
- * Perjalanan misi 5 tahap — WAJIB BERURUTAN:
- * mission N+1 baru terbuka setelah mission N ditandai selesai (mis. 1 → 2 → … → 5).
+ * Perjalanan misi bertahap (6 tahap saintifik) — WAJIB BERURUTAN:
+ * mission N+1 baru terbuka setelah mission N ditandai selesai
+ * (Mengamati → Menanya → Mengumpulkan Informasi → Menalar →
+ * Mengomunikasikan → Mengevaluasi).
  * Jawaban tiap blok tersimpan di progres sehingga bolak-balik tidak menghapusnya.
  */
 export default function JourneyPage() {
@@ -35,6 +37,8 @@ export default function JourneyPage() {
   const refreshRef = useRef(false);
   const selesaiRef = useRef(false);
   const mulaiInitRef = useRef(false);
+  /** Hitungan pelanggaran yang tampil di halaman (dipulihkan setelah muat ulang). */
+  const [cheatTampil, setCheatTampil] = useState(0);
 
   // Mulai dari mission pertama yang belum selesai — cukup sekali agar tidak melompat saat sinkron.
   useEffect(() => {
@@ -143,6 +147,7 @@ export default function JourneyPage() {
             mulaiRef={mulaiRef}
             refreshRef={refreshRef}
             selesaiRef={selesaiRef}
+            onCount={setCheatTampil}
           />
           <div className="flex flex-wrap items-center gap-2 text-[13px] text-ink-muted">
             <Link href="/lkpd" className="hover:text-primary">LKPD</Link>
@@ -155,6 +160,12 @@ export default function JourneyPage() {
 
           <div className="mt-3 mb-4">
             <Progress value={p.persen} />
+            {/* Hitungan pelanggaran terlihat transparan bagi siswa (dipulihkan saat muat ulang). */}
+            {user?.role === "siswa" && !terkunci ? (
+              <p className="text-[12px] text-ink-muted mt-1.5">
+                Pelanggaran pindah tab: <b className={cheatTampil ? "text-red-600" : ""}>{cheatTampil}×</b>
+              </p>
+            ) : null}
           </div>
 
           <div className="rounded-lg border border-primary-200 bg-primary-50/60 px-3.5 py-2.5 text-[13px] text-primary-800 mb-4">
@@ -163,9 +174,12 @@ export default function JourneyPage() {
 
           {terkunci ? (
             <div className="rounded-lg border border-amber-300 bg-amber-50 px-3.5 py-2.5 text-[13px] text-amber-900 mb-4">
-              📦 <b>LKPD sudah dikumpulkan</b> — jawaban tidak bisa diubah dan tidak bisa dikerjakan ulang. Nilai{" "}
-              <b>{nilaiAkhir ?? "—"}</b>{" "}
-              {prog?.menungguPemeriksaan ? "· menunggu pemeriksaan guru." : prog?.verifikasi ? "· sudah diperiksa guru ✓" : "· menunggu pemeriksaan guru."}
+              📦 <b>LKPD sudah dikumpulkan</b> — jawaban tidak bisa diubah dan tidak bisa dikerjakan ulang.{" "}
+              {prog?.verifikasi ? (
+                <>Nilai <b>{nilaiAkhir ?? "—"}</b> · sudah diperiksa guru ✓</>
+              ) : (
+                <>Nilai <b>masih menunggu verifikasi guru</b> — nilai baru ditampilkan setelah guru memeriksa.</>
+              )}
               {prog?.feedbackGuru ? (
                 <span className="mt-2 block rounded-lg border border-amber-200 bg-white px-3 py-2 text-[13px] text-ink-soft">
                   💬 <b>Feedback guru:</b> {prog.feedbackGuru}
@@ -218,13 +232,10 @@ export default function JourneyPage() {
                   Kamu menuntaskan seluruh mission <b>{sub.judul}</b> — {p.total} mission selesai.
                 </p>
                 <div className="mx-auto mt-4 max-w-[420px] rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-                  <p className="text-[12.5px] font-semibold text-amber-800 uppercase tracking-wide">Nilai pengerjaan</p>
-                  <p className="text-[30px] font-bold text-ink mt-0.5">{nilaiAkhir ?? "—"}</p>
-                  <p className="text-[15px] font-semibold text-amber-900 mt-1">⏳ Menunggu pemeriksaan guru</p>
+                  <p className="text-[15px] font-semibold text-amber-900">⏳ Nilai sedang menunggu verifikasi guru</p>
                   <p className="text-[13px] text-amber-800 mt-1">
-                    {nilaiAkhir == null
-                      ? "Jawabanmu berupa pertanyaan terbuka — nilai ditentukan guru setelah memeriksa."
-                      : "Status: Menunggu pemeriksaan — nilai menjadi fiks setelah guru memeriksa dan memverifikasi."}
+                    Nilai <b>tidak ditampilkan sekarang</b> — guru akan memeriksa jawabanmu lebih dulu, lalu nilai &amp;
+                    feedback muncul di menu <b>Nilai</b>. Jawaban terbuka (essay/refleksi) dinilai langsung oleh guru.
                   </p>
                   <p className="text-[12.5px] text-amber-800 mt-2 border-t border-amber-200 pt-2">
                     🔒 LKPD terkunci: tidak bisa dikerjakan ulang. Jawaban pertamamu tetap tersimpan.
@@ -232,7 +243,7 @@ export default function JourneyPage() {
                 </div>
               </div>
               <div className="mt-4 flex flex-wrap gap-2">
-                <Link href="/nilai" className="btn-primary flex-1">Lihat nilai &amp; status</Link>
+                <Link href="/nilai" className="btn-primary flex-1">Lihat status di menu Nilai</Link>
                 <Link href={`/lkpd/${topik.id}`} className="btn-ghost" onClick={() => setRaya(false)}>Pilih submateri lain</Link>
               </div>
             </Modal>
@@ -340,8 +351,12 @@ export default function JourneyPage() {
 
           {semuaSelesai && !raya ? (
             <div className="mt-5 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-[13.5px] text-green-800">
-              ✅ Seluruh mission selesai — nilai <b>{nilaiAkhir ?? "—"}</b>{" "}
-              {prog?.verifikasi ? "· sudah diperiksa guru ✓" : "menunggu pemeriksaan guru."}
+              ✅ Seluruh mission selesai —{" "}
+              {prog?.verifikasi ? (
+                <>nilai <b>{nilaiAkhir ?? "—"}</b> · sudah diperiksa guru ✓</>
+              ) : (
+                <>nilai <b>menunggu verifikasi guru</b> — baru ditampilkan setelah guru memeriksa.</>
+              )}
               {prog?.feedbackGuru ? (
                 <span className="mt-2 block rounded-lg border border-green-200 bg-white px-3 py-2 text-[13px] text-ink-soft">
                   💬 <b>Feedback guru:</b> {prog.feedbackGuru}

@@ -383,8 +383,8 @@ function Exam() {
       <Modal open={done !== null} onClose={() => router.push("/nilai")} title="🎉 Ujian terkumpul">
         <p className="text-[18px] font-semibold text-center">Jawaban berhasil dikumpulkan.</p>
         <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-center">
-          <p className="text-[15px] font-semibold text-amber-900">⏳ Menunggu pemeriksaan guru</p>
-          <p className="text-[13px] text-amber-800 mt-1">Status: <b>Belum diperiksa</b> — nilai akhir &amp; feedback muncul setelah guru memeriksa{cheatRef.current ? ` · ${cheatRef.current} catatan perpindahan laman diteruskan ke guru` : ""}.</p>
+          <p className="text-[15px] font-semibold text-amber-900">⏳ Nilai sedang menunggu verifikasi guru</p>
+          <p className="text-[13px] text-amber-800 mt-1">Nilai <b>tidak ditampilkan sekarang</b> — guru memeriksa jawabanmu lebih dulu, lalu nilai &amp; feedback muncul di menu <b>Nilai</b>{cheatRef.current ? ` · ${cheatRef.current} catatan perpindahan laman diteruskan ke guru` : ""}.</p>
         </div>
         <div className="mt-4 flex gap-2">
           <button className="btn-primary flex-1" onClick={() => router.push("/nilai")}>Lihat nilai & status</button>

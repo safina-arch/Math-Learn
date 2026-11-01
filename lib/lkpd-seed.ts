@@ -1,4 +1,5 @@
 import type { LkpdBlock, LkpdOpsi, LkpdSubtopic, LkpdTopic } from "./types";
+import { missionMengevaluasi } from "./lkpd";
 
 /** Opsi pertanyaan singkat. */
 const o = (teks: string, benar: boolean, feedback: string): LkpdOpsi => ({ teks, benar, feedback });
@@ -12,7 +13,7 @@ export const SEED_LKPD_TOPICS: LkpdTopic[] = [
   {
     id: "perbandingan",
     judul: "Perbandingan",
-    deskripsi: "Memahami konsep perbandingan lewat fenomena nyata: mengamati, menanya, mengumpulkan data, menalar pola, lalu mengomunikasikan temuan.",
+    deskripsi: "Memahami konsep perbandingan lewat fenomena nyata: mengamati, menanya, mengumpulkan data, menalar pola, mengomunikasikan temuan, lalu mengevaluasi hasil belajarmu.",
     ikon: "⚖️",
     subtopics: [
       /* ————————————————— Submateri 1: Perbandingan (konsep dasar) ————————————————— */
@@ -126,7 +127,7 @@ export const SEED_LKPD_TOPICS: LkpdTopic[] = [
           },
           {
             id: "pb-dasar-m5",
-            judul: "Mengomunikasikan & Mengevaluasi",
+            judul: "Mengomunikasikan",
             ikon: "💬",
             deskripsi: "Jelaskan temuanmu, lalu temukan kesalahan penalaran pada orang lain.",
             blok: [
@@ -148,6 +149,8 @@ export const SEED_LKPD_TOPICS: LkpdTopic[] = [
               { id: "pb-dasar-m5-b2", tipe: "refleksi", judul: "Refleksi akhir", teks: "Dengan bahasamu sendiri, bagaimana cara membandingkan dua keadaan agar hasilnya adil dan tepat? Tulis 2–3 kalimat." },
             ],
           },
+          /* Tahap "Mengevaluasi" kini terpisah dari "Mengomunikasikan" (Gelombang 14). */
+          missionMengevaluasi("pb-dasar-m6"),
         ],
       },
       {
@@ -278,7 +281,7 @@ export const SEED_LKPD_TOPICS: LkpdTopic[] = [
           },
           {
             id: "pb-senilai-m5",
-            judul: "Mengomunikasikan & Mengevaluasi",
+            judul: "Mengomunikasikan",
             ikon: "💬",
             deskripsi: "Jelaskan strategimu dan evaluasi solusi yang keliru.",
             blok: [
@@ -300,6 +303,8 @@ export const SEED_LKPD_TOPICS: LkpdTopic[] = [
               { id: "pb-senilai-m5-b2", tipe: "refleksi", judul: "Refleksi akhir", teks: "Bagaimana kamu akan menjelaskan 'perbandingan senilai' kepada teman yang baru belajar? Tulis 2–3 kalimat dengan bahasamu sendiri." },
             ],
           },
+          /* Tahap "Mengevaluasi" kini terpisah dari "Mengomunikasikan" (Gelombang 14). */
+          missionMengevaluasi("pb-senilai-m6"),
         ],
       },
       {
@@ -424,7 +429,7 @@ export const SEED_LKPD_TOPICS: LkpdTopic[] = [
           },
           {
             id: "pb-balik-m5",
-            judul: "Mengomunikasikan & Mengevaluasi",
+            judul: "Mengomunikasikan",
             ikon: "💬",
             deskripsi: "Jelaskan strategimu, evaluasi solusi yang keliru, lalu refleksikan pembelajaranmu.",
             blok: [
@@ -446,6 +451,8 @@ export const SEED_LKPD_TOPICS: LkpdTopic[] = [
               { id: "pb-balik-m5-b2", tipe: "refleksi", judul: "Refleksi akhir", teks: "Bagaimana kamu membedakan perbandingan senilai dan berbalik nilai dalam situasi nyata? Tulis 2–3 kalimat." },
             ],
           },
+          /* Tahap "Mengevaluasi" kini terpisah dari "Mengomunikasikan" (Gelombang 14). */
+          missionMengevaluasi("pb-balik-m6"),
         ],
       },
     ],

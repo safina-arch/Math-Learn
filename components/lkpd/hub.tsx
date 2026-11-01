@@ -42,7 +42,7 @@ export function LkpdHub() {
     <div>
       <PageHeader
         title="📚 LKPD — Learning Journey"
-        desc="Pilih materi yang ingin kamu pelajari. Setiap materi berisi submateri dengan perjalanan misi 5 tahap berpikir."
+        desc="Pilih materi yang ingin kamu pelajari. Setiap materi berisi submateri dengan perjalanan misi 6 tahap berpikir."
         right={manage ? <button className="btn-primary text-[13px]" onClick={() => setModal("baru")}>+ Tambah Materi</button> : undefined}
       />
 
