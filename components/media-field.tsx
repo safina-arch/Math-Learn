@@ -45,7 +45,8 @@ export function MediaField({
       const r = await fetch("/api/upload", { method: "POST", body: form });
       const j = await r.json().catch(() => ({} as Record<string, string>));
       if (!r.ok) {
-        setErr(j.error || "Gagal mengunggah. Coba lagi.");
+        // 413 = file terlalu besar untuk body request serverless (dicek platform).
+        setErr(r.status === 413 ? "File terlalu besar untuk diunggah — perkecil filenya atau tempel tautan." : j.error || "Gagal mengunggah. Coba lagi.");
         return;
       }
       onUrl(j.url, j.name);

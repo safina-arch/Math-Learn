@@ -36,6 +36,17 @@ function safeName(name: string): string {
   return name.replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 120) || "file";
 }
 
+/**
+ * Tipe konten file: pakai tipe dari browser bila valid; bila kosong ATAU
+ * generik (`application/octet-stream` — sering terjadi pada sebagian lingkungan),
+ * tebak dari ekstensi nama file agar MP4/DOCX/dll. tetap dikenali.
+ */
+function contentTypeOf(file: File): string {
+  const t = file.type;
+  if (t && t !== "application/octet-stream") return t;
+  return mimeFromExt(file.name) || t || "";
+}
+
 /** Fallback: tebak MIME dari ekstensi bila browser tidak mengirim tipe file. */
 function mimeFromExt(name: string): string {
   const ext = name.toLowerCase().split(".").pop() || "";
@@ -74,7 +85,7 @@ function mimeFromExt(name: string): string {
 async function uploadFile(file: File, index: number) {
   const bytes = Buffer.from(await file.arrayBuffer());
   const stamped = `${Date.now()}-${index}-${safeName(file.name)}`;
-  const contentType = file.type || mimeFromExt(file.name);
+  const contentType = contentTypeOf(file);
 
   const sb = supabaseServer();
   const bucket = process.env.SUPABASE_STORAGE_BUCKET || "materi";
@@ -125,7 +136,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Tidak ada file." }, { status: 400 });
     }
     for (const file of files) {
-      const contentType = file.type || mimeFromExt(file.name);
+      const contentType = contentTypeOf(file);
       if (!ALLOWED.has(contentType)) {
         return NextResponse.json(
           { error: `Format file ${file.name} tidak didukung. Gunakan gambar (PNG/JPG/WebP/GIF), dokumen (PDF/DOC/DOCX/XLS/XLSX/PPT/PPTX/CSV/TXT/ZIP), atau video (MP4/WebM/OGV/MOV).` },
