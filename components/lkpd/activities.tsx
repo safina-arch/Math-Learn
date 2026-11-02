@@ -198,6 +198,8 @@ function Cocokkan({ a, awal, simpan }: { a: LkpdAktivitas; awal: NilaiAktivitas;
 function IsiTabel({ a, awal, simpan }: { a: LkpdAktivitas; awal: NilaiAktivitas; simpan?: (t: string) => void }) {
   const baris = a.baris || [];
   const kolom = a.kolom || [];
+  // Toleransi data lama: jumlah kolom tabel = terlebar antara header & sel terpanjang.
+  const nKolom = Math.max(kolom.length, ...baris.map((r) => r.sel.length));
   const [val, setVal] = useState<Record<string, string>>(() => awal?.val || {});
   const [dicek, setDicek] = useState<boolean>(() => Boolean(awal?.dicek));
 
@@ -220,15 +222,16 @@ function IsiTabel({ a, awal, simpan }: { a: LkpdAktivitas; awal: NilaiAktivitas;
         <table className="w-full text-[13.5px] min-w-[420px]">
           <thead>
             <tr className="text-left text-[12px] text-ink-muted bg-white border border-line">
-              {kolom.map((c) => <th key={c} className="px-3 py-2 font-medium">{c}</th>)}
+              {Array.from({ length: nKolom }, (_, i) => <th key={i} className="px-3 py-2 font-medium">{kolom[i] ?? ""}</th>)}
             </tr>
           </thead>
           <tbody>
             {baris.map((r, ri) => (
               <tr key={ri} className="border border-line bg-white">
-                {r.sel.map((s, ci) => {
+                {Array.from({ length: nKolom }, (_, ci) => {
                   const key = `${ri}-${ci}`;
-                  if (s.teks !== undefined) return <td key={ci} className="px-3 py-2 text-ink-soft">{s.teks}</td>;
+                  const s = r.sel[ci];
+                  if (!s || s.teks !== undefined) return <td key={ci} className="px-3 py-2 text-ink-soft">{s?.teks ?? ""}</td>;
                   const v = val[key] || "";
                   const benar = dicek && selSama(v, s.kunci);
                   const salah = dicek && !selSama(v, s.kunci);

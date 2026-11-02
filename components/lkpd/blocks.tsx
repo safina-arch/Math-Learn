@@ -241,6 +241,8 @@ function RingkasAktivitas({ a, nilai, tampilkanKunci }: { a: LkpdAktivitas; nila
   const kolom = a.kolom || [];
   const baris = a.baris || [];
   const terisi = Object.values(val).filter((v) => String(v).trim() !== "").length;
+  // Toleransi data lama: jumlah kolom tabel = terlebar antara header & sel terpanjang.
+  const nKolom = Math.max(kolom.length, ...baris.map((r) => r.sel.length));
   return (
     <div className="rounded-xl border border-line bg-wash/50 card-pad !p-3.5">
       <p className="text-[13px] font-semibold mb-2">📊 {a.instruksi}</p>
@@ -251,16 +253,17 @@ function RingkasAktivitas({ a, nilai, tampilkanKunci }: { a: LkpdAktivitas; nila
           <table className="w-full text-[13px] min-w-[380px]">
             <thead>
               <tr className="text-left text-[12px] text-ink-muted">
-                {kolom.map((c) => (
-                  <th key={c} className="px-2 py-1.5 font-medium">{c}</th>
+                {Array.from({ length: nKolom }, (_, i) => (
+                  <th key={i} className="px-2 py-1.5 font-medium">{kolom[i] ?? ""}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {baris.map((r, ri) => (
                 <tr key={ri}>
-                  {r.sel.map((s, ci) => {
-                    if (s.teks !== undefined) return <td key={ci} className="px-2 py-1.5 text-ink-soft">{s.teks}</td>;
+                  {Array.from({ length: nKolom }, (_, ci) => {
+                    const s = r.sel[ci];
+                    if (!s || s.teks !== undefined) return <td key={ci} className="px-2 py-1.5 text-ink-soft">{s?.teks ?? ""}</td>;
                     const kunci = (s.kunci || "").trim();
                     const v = val[`${ri}-${ci}`] || "";
                     const benar = tampilkanKunci && kunci && selSama(v, kunci);

@@ -32,7 +32,7 @@ function blokBaru(tipe: LkpdBlockTipe): LkpdBlock {
 export default function KelolaLkpdPage() {
   const params = useParams<{ topik: string; sub: string }>();
   const router = useRouter();
-  const { lkpdTopics, upsertLkpdTopic, ready, user } = useStore();
+  const { lkpdTopics, upsertLkpdTopic, lkpdProgress, ready, user } = useStore();
 
   const topik = lkpdTopics.find((t) => t.id === params.topik);
   const sub = topik?.subtopics.find((s) => s.id === params.sub);
@@ -67,6 +67,11 @@ export default function KelolaLkpdPage() {
 
   const missions = subDraft.missions;
   const mission = missions.find((m) => m.id === sel) || null;
+
+  // Peringatan edit tabel: bila mission ini punya blok isi-tabel dan sudah ada
+  // jawaban siswa tersimpan, mengubah urutan/menghapus sel menggeser posisi kunci.
+  const adaIsiTabel = Boolean(mission?.blok.some((b) => b.tipe === "aktivitas" && b.aktivitas?.tipe === "isi-tabel"));
+  const adaJawaban = Boolean(mission && lkpdProgress.some((p) => p.subtopicId === params.sub && Object.keys(p.jawaban || {}).includes(mission.id)));
 
   const ubahSub = (fn: (m: LkpdMission[]) => LkpdMission[]) => {
     setDraft((d) => (d ? { ...d, subtopics: d.subtopics.map((s) => (s.id === params.sub ? { ...s, missions: fn(s.missions) } : s)) } : d));
@@ -213,6 +218,11 @@ export default function KelolaLkpdPage() {
 
                     <div className="space-y-3">
                       <p className="text-[13px] font-semibold uppercase tracking-wide text-ink-faint">Content blocks (susun seperti building blocks)</p>
+                      {adaIsiTabel && adaJawaban ? (
+                        <p className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[12.5px] text-amber-800">
+                          ⚠️ Sudah ada siswa yang mengisi mission ini. Mengubah urutan kolom/baris atau menghapus sel akan menggeser posisi kunci jawaban mereka — mengubah teks, kunci, dan feedback tetap aman.
+                        </p>
+                      ) : null}
                       {mission.blok.length === 0 ? (
                         <Empty title="Belum ada konten" desc='Tambahkan content block pertama dengan tombol "+ Add Content".' />
                       ) : mission.blok.map((b, i) => (
