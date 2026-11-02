@@ -233,9 +233,11 @@ export default function KelolaLkpdPage() {
                       <button className="btn-primary !text-[13px]" onClick={() => setAddBlok((v) => !v)}>+ Add Content</button>
                       {addBlok ? (
                         <>
-                          {/* Backdrop hanya saat menu terbuka — tidak boleh menelan klik editor saat tertutup. */}
-                          <button className="fixed inset-0 z-10 bg-transparent cursor-default" aria-label="tutup menu" onClick={() => setAddBlok(false)} />
-                          <div className="absolute z-20 mt-2 w-[260px] card shadow-pop p-1.5 grid grid-cols-1 gap-1">
+                          {/* Backdrop hanya saat menu terbuka — tidak boleh menelan klik editor saat tertutup.
+                              z-40/50 (di atas nav bawah & header yang juga z-40) agar menu tidak tertimbun
+                              dan itemnya bisa diklik di layar pendek. */}
+                          <button className="fixed inset-0 z-40 bg-transparent cursor-default" aria-label="tutup menu" onClick={() => setAddBlok(false)} />
+                          <div className="absolute z-50 mt-2 w-[260px] card shadow-pop p-1.5 grid grid-cols-1 gap-1">
                             {JENIS_BLOK.map((t) => (
                               <button
                                 key={t}
