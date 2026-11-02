@@ -3,6 +3,7 @@
 import type { LkpdAktivitas, LkpdBloom, LkpdBlock, LkpdSel } from "@/lib/types";
 import { BLOOM_LABEL } from "@/lib/types";
 import { uid } from "@/lib/utils";
+import { MediaField } from "@/components/media-field";
 import { BLOCK_LABEL } from "./blocks";
 
 type Patch = Partial<LkpdBlock>;
@@ -89,10 +90,15 @@ export function BlockEditor({
 
         {blok.tipe === "gambar" ? (
           <>
-            <div>
-              <label className="label">URL gambar (opsional — kosong = placeholder)</label>
-              <input className="input" value={blok.url || ""} placeholder="https://…" onChange={(e) => onChange({ url: e.target.value })} />
-            </div>
+            <MediaField
+              label="Gambar — tempel tautan ATAU unggah foto dari perangkat"
+              url={blok.url || ""}
+              onUrl={(url) => onChange({ url: url || undefined })}
+              accept="image/png,image/jpeg,image/webp,image/gif"
+              acceptHint="Foto: PNG, JPG, WebP, atau GIF · maksimal 10 MB (kosong = placeholder)"
+              placeholder="https://… atau unggah file"
+              preview="gambar"
+            />
             <div>
               <label className="label">Keterangan / deskripsi ilustrasi</label>
               <input className="input" value={blok.teks || ""} placeholder="mis. 🏫 Kelas A — 4 meja · 12 siswa" onChange={(e) => onChange({ teks: e.target.value })} />
@@ -100,16 +106,43 @@ export function BlockEditor({
           </>
         ) : null}
 
-        {blok.tipe === "video" || blok.tipe === "animasi" ? (
+        {blok.tipe === "video" ? (
           <>
             <div>
               <label className="label">Judul</label>
               <input className="input" value={blok.judul || ""} onChange={(e) => onChange({ judul: e.target.value })} />
             </div>
+            <MediaField
+              label="Video — tautan (YouTube / Drive) ATAU unggah file video"
+              url={blok.url || ""}
+              onUrl={(url) => onChange({ url: url || undefined })}
+              accept="video/mp4,video/webm,video/ogg,video/quicktime"
+              acceptHint="Video: MP4, WebM, OGV, atau MOV · maksimal 4 MB — video lebih besar? tempel tautan YouTube/Drive"
+              placeholder="https://www.youtube.com/watch?v=… atau unggah file"
+              preview="video"
+            />
             <div>
-              <label className="label">URL / embed (YouTube, GIF, dll. — kosong = placeholder)</label>
-              <input className="input" value={blok.url || ""} placeholder="https://…" onChange={(e) => onChange({ url: e.target.value })} />
+              <label className="label">Keterangan bila tautan kosong</label>
+              <input className="input" value={blok.teks || ""} onChange={(e) => onChange({ teks: e.target.value })} />
             </div>
+          </>
+        ) : null}
+
+        {blok.tipe === "animasi" ? (
+          <>
+            <div>
+              <label className="label">Judul</label>
+              <input className="input" value={blok.judul || ""} onChange={(e) => onChange({ judul: e.target.value })} />
+            </div>
+            <MediaField
+              label="Animasi — tautan embed ATAU unggah GIF"
+              url={blok.url || ""}
+              onUrl={(url) => onChange({ url: url || undefined })}
+              accept="image/gif,image/webp,image/png,image/jpeg"
+              acceptHint="Animasi: GIF (maksimal 10 MB) — atau tautan embed situs animasi (PhET, GeoGebra, dll.)"
+              placeholder="https://… (situs embed atau file GIF)"
+              preview="gambar"
+            />
             <div>
               <label className="label">Keterangan bila tautan kosong</label>
               <input className="input" value={blok.teks || ""} onChange={(e) => onChange({ teks: e.target.value })} />
@@ -123,10 +156,14 @@ export function BlockEditor({
               <label className="label">Nama berkas</label>
               <input className="input" value={blok.namaBerkas || ""} placeholder="mis. LKPD-Geometri.pdf" onChange={(e) => onChange({ namaBerkas: e.target.value })} />
             </div>
-            <div>
-              <label className="label">URL berkas (opsional)</label>
-              <input className="input" value={blok.url || ""} placeholder="https://…" onChange={(e) => onChange({ url: e.target.value })} />
-            </div>
+            <MediaField
+              label="Berkas — tempel tautan ATAU unggah file dari perangkat"
+              url={blok.url || ""}
+              onUrl={(url, nama) => onChange({ url: url || undefined, namaBerkas: blok.namaBerkas || nama || undefined })}
+              accept="application/pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.csv,.txt,.zip"
+              acceptHint="Berkas: PDF, DOC/DOCX, XLS/XLSX, PPT/PPTX, CSV, TXT, atau ZIP · maksimal 10 MB"
+              placeholder="https://… atau unggah file"
+            />
             <div>
               <label className="label">Keterangan</label>
               <input className="input" value={blok.teks || ""} onChange={(e) => onChange({ teks: e.target.value })} />

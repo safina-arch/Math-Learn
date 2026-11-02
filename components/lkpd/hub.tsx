@@ -58,6 +58,12 @@ export function LkpdHub() {
             const cta = ctaProgres(p.status);
             return (
               <div key={t.id} className="card card-pad hover:border-primary-200 transition-colors flex flex-col">
+                {t.thumbnail ? (
+                  <div className="-mx-4 -mt-4 mb-3 overflow-hidden rounded-t-xl2 border-b border-line bg-wash">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={t.thumbnail} alt="" className="h-28 w-full object-cover" onError={(e) => { e.currentTarget.style.display = "none"; }} />
+                  </div>
+                ) : null}
                 <div className="flex items-start gap-3">
                   <span className="text-[30px] leading-none">{t.ikon || "📘"}</span>
                   <div className="min-w-0 flex-1">

@@ -3,13 +3,34 @@ import { mkdir, writeFile } from "fs/promises";
 import { join } from "path";
 import { supabaseServer } from "@/lib/supabase";
 
-const MAX_BYTES = 10 * 1024 * 1024; // 10 MB
+const MAX_BYTES = 10 * 1024 * 1024; // 10 MB — gambar & dokumen
+// Video: batas lebih kecil agar aman di bawah batas body request serverless
+// (±4,5 MB). Video lebih besar → tempel tautan YouTube/Drive (tetap didukung).
+const MAX_VIDEO_BYTES = 4 * 1024 * 1024;
 const ALLOWED = new Set([
-  "application/pdf",
+  // Gambar
   "image/png",
   "image/jpeg",
   "image/webp",
+  "image/gif",
+  // Dokumen
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-powerpoint",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "text/csv",
+  "text/plain",
+  "application/zip",
+  // Video
+  "video/mp4",
+  "video/webm",
+  "video/ogg",
+  "video/quicktime",
 ]);
+const VIDEO_TYPES = new Set(["video/mp4", "video/webm", "video/ogg", "video/quicktime"]);
 
 function safeName(name: string): string {
   return name.replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 120) || "file";
@@ -18,15 +39,34 @@ function safeName(name: string): string {
 /** Fallback: tebak MIME dari ekstensi bila browser tidak mengirim tipe file. */
 function mimeFromExt(name: string): string {
   const ext = name.toLowerCase().split(".").pop() || "";
-  if (ext === "pdf") return "application/pdf";
-  if (ext === "png") return "image/png";
-  if (ext === "jpg" || ext === "jpeg") return "image/jpeg";
-  if (ext === "webp") return "image/webp";
-  return "";
+  const peta: Record<string, string> = {
+    pdf: "application/pdf",
+    png: "image/png",
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    webp: "image/webp",
+    gif: "image/gif",
+    doc: "application/msword",
+    docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    xls: "application/vnd.ms-excel",
+    xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ppt: "application/vnd.ms-powerpoint",
+    pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    csv: "text/csv",
+    txt: "text/plain",
+    zip: "application/zip",
+    mp4: "video/mp4",
+    m4v: "video/mp4",
+    webm: "video/webm",
+    ogv: "video/ogg",
+    ogg: "video/ogg",
+    mov: "video/quicktime",
+  };
+  return peta[ext] || "";
 }
 
 /**
- * Upload lampiran (PDF/gambar).
+ * Upload lampiran LKPD/materi (gambar · dokumen · video).
  * - Supabase terkonfigurasi: simpan ke bucket Storage `materi` → public URL lintas device.
  * - Production TANPA Supabase: error eksplisit (disk Vercel read-only & ephemeral).
  * - Mode dev lokal saja: fallback ke `<project>/public/uploads/` + `/api/files/...`.
@@ -87,10 +127,15 @@ export async function POST(req: Request) {
     for (const file of files) {
       const contentType = file.type || mimeFromExt(file.name);
       if (!ALLOWED.has(contentType)) {
-        return NextResponse.json({ error: `Format file ${file.name} tidak didukung. Gunakan PDF, PNG, JPG, atau WebP.` }, { status: 400 });
+        return NextResponse.json(
+          { error: `Format file ${file.name} tidak didukung. Gunakan gambar (PNG/JPG/WebP/GIF), dokumen (PDF/DOC/DOCX/XLS/XLSX/PPT/PPTX/CSV/TXT/ZIP), atau video (MP4/WebM/OGV/MOV).` },
+          { status: 400 }
+        );
       }
-      if (file.size > MAX_BYTES) {
-        return NextResponse.json({ error: `Ukuran file ${file.name} maksimal 10 MB.` }, { status: 400 });
+      const batas = VIDEO_TYPES.has(contentType) ? MAX_VIDEO_BYTES : MAX_BYTES;
+      if (file.size > batas) {
+        const mb = batas / (1024 * 1024);
+        return NextResponse.json({ error: `Ukuran file ${file.name} maksimal ${Number.isInteger(mb) ? mb : mb.toFixed(1)} MB.` }, { status: 400 });
       }
     }
 

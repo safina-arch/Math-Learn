@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Modal } from "@/components/ui";
+import { MediaField } from "@/components/media-field";
 import type { LkpdSubtopic, LkpdTopic } from "@/lib/types";
 import { uid } from "@/lib/utils";
 
@@ -77,11 +78,16 @@ export function TopikModal({
             <label className="label">Icon (emoji)</label>
             <input className="input" value={ikon} placeholder="📐" onChange={(e) => setIkon(e.target.value)} />
           </div>
-          <div>
-            <label className="label">Thumbnail (URL, opsional)</label>
-            <input className="input" value={thumb} placeholder="https://…" onChange={(e) => setThumb(e.target.value)} />
-          </div>
         </div>
+        <MediaField
+          label="Foto sampul / thumbnail — tautan ATAU unggah dari perangkat (opsional)"
+          url={thumb}
+          onUrl={setThumb}
+          accept="image/png,image/jpeg,image/webp,image/gif"
+          acceptHint="Gambar sampul: PNG, JPG, WebP, atau GIF · maksimal 10 MB — atau tempel tautan gambar"
+          placeholder="https://… atau unggah file"
+          preview="gambar"
+        />
         {err ? <p className="text-[13px] text-red-600">{err}</p> : null}
         <div className="flex justify-end gap-2 pt-1">
           <button className="btn-ghost" onClick={onClose}>Batal</button>

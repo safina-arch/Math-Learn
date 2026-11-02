@@ -164,6 +164,22 @@ export function isDriveUrl(url: string): boolean {
 }
 
 /**
+ * URL media LANGSUNG (file berekstensi), bukan tautan platform — dipakai untuk
+ * memilih renderer: video file → `<video>`, gambar/GIF → `<img>` (bukan iframe
+ * embed yang tidak memutar file langsung).
+ */
+const RE_VIDEO_LANGSUNG = /\.(mp4|webm|ogv|ogg|mov|m4v)(\?|#|$)/i;
+const RE_GAMBAR_LANGSUNG = /\.(png|jpe?g|webp|gif|avif|svg)(\?|#|$)/i;
+
+export function isVideoLangsung(url: string): boolean {
+  return RE_VIDEO_LANGSUNG.test((url || "").trim().split("?")[0]);
+}
+
+export function isGambarLangsung(url: string): boolean {
+  return RE_GAMBAR_LANGSUNG.test((url || "").trim().split("?")[0]);
+}
+
+/**
  * Normalisasi tautan Google Drive ke bentuk preview-embed.
  * `…/file/d/ID/view?usp=sharing` → `…/file/d/ID/preview`.
  * Catatan: preview hanya tampil bila izin Drive mengizinkan "siapa pun yang punya tautan".

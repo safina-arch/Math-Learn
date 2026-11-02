@@ -4,7 +4,7 @@ import { useState } from "react";
 import type { LkpdAktivitas, LkpdBlock } from "@/lib/types";
 import { BLOOM_LABEL } from "@/lib/types";
 import { selSama } from "@/lib/lkpd";
-import { drivePreviewUrl, isDriveUrl, youtubeEmbed } from "@/lib/utils";
+import { drivePreviewUrl, isDriveUrl, isGambarLangsung, isVideoLangsung, youtubeEmbed } from "@/lib/utils";
 import { Aktivitas } from "./activities";
 
 /** Tooltip ikon tipe blok untuk editor/preview. */
@@ -74,7 +74,10 @@ export function BlokRenderer({
         <div className="card card-pad">
           {blok.judul ? <p className="text-[14.5px] font-semibold mb-2">🎥 {blok.judul}</p> : null}
           {blok.url ? (
-            isDriveUrl(blok.url) ? (
+            isVideoLangsung(blok.url) ? (
+              // File video langsung (hasil unggah) — putar di tempat, bukan iframe embed.
+              <video src={blok.url} controls preload="metadata" className="w-full max-h-[420px] rounded-lg border border-line bg-black" title={blok.judul || "Video"} />
+            ) : isDriveUrl(blok.url) ? (
               // Tautan Drive: preview iframe hanya bila izin "siapa pun dengan tautan".
               // Jika tidak, siswa tetap bisa membuka di tab baru.
               <div className="space-y-2">
@@ -103,7 +106,13 @@ export function BlokRenderer({
         <div className="card card-pad">
           {blok.judul ? <p className="text-[14.5px] font-semibold mb-2">🎞️ {blok.judul}</p> : null}
           {blok.url ? (
-            <iframe src={blok.url} className="w-full aspect-video rounded-lg border border-line" title={blok.judul || "Animasi"} />
+            isGambarLangsung(blok.url) ? (
+              // GIF/animasi berupa file gambar langsung (hasil unggah) → tampil utuh.
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={blok.url} alt={blok.judul || "Animasi"} className="w-full max-h-[420px] rounded-lg border border-line bg-white object-contain" />
+            ) : (
+              <iframe src={blok.url} className="w-full aspect-video rounded-lg border border-line" title={blok.judul || "Animasi"} />
+            )
           ) : (
             <div className="rounded-lg border border-dashed border-line bg-wash px-4 py-8 text-center">
               <span className="inline-block text-[34px] animate-bounce">🧲</span>
