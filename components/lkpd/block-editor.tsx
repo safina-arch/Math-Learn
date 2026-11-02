@@ -355,7 +355,11 @@ function AktivitasEditor({ blok, onChange }: { blok: LkpdBlock; onChange: (p: Pa
 function TabelEditor({ a, set }: { a: LkpdAktivitas; set: (p: Partial<LkpdAktivitas>) => void }) {
   const kolom = a.kolom || [];
   const baris = a.baris || [];
-  const nKunci = baris.reduce((n, r) => n + r.sel.filter((s) => (s.kunci || "").trim() !== "").length, 0);
+  // "Sel diisi siswa" = sel yang di renderer jadi input siswa (teks belum terisi).
+  // Dihitung dari MODE sel, bukan isi kunci — supaya ringkasan langsung sinkron
+  // begitu guru menekan "jadi sel diisi siswa" (kunci masih kosong saat itu).
+  const modeSiswa = (s: LkpdSel) => s.teks === undefined;
+  const nKunci = baris.reduce((n, r) => n + r.sel.filter(modeSiswa).length, 0);
 
   /** Satu jalur semua perubahan struktur: kolom & sel tiap baris ikut menyesuaikan. */
   const setTabel = (k: string[], b: { sel: LkpdSel[] }[]) => {
@@ -371,7 +375,17 @@ function TabelEditor({ a, set }: { a: LkpdAktivitas; set: (p: Partial<LkpdAktivi
   };
 
   const ubahSel = (ri: number, ci: number, patch: Partial<LkpdSel>) =>
-    setTabel(kolom, baris.map((r, i) => (i === ri ? { sel: r.sel.map((s, j) => (j === ci ? { ...s, ...patch } : s)) } : r)));
+    setTabel(
+      kolom,
+      baris.map((r, i) => {
+        if (i !== ri) return r;
+        // Bangun sel sepanjang kolom dulu (data lama bisa kurang/lebih) supaya
+        // patch selalu kena — tidak ada klik "sia-sia" pada baris yang belum rapi.
+        const sel = Array.from({ length: kolom.length }, (_, j) => ({ ...(r.sel[j] || { teks: "" }) }));
+        sel[ci] = { ...(sel[ci] || { teks: "" }), ...patch };
+        return { sel };
+      })
+    );
 
   const geserKolom = (i: number, delta: number) => {
     const j = i + delta;
@@ -386,7 +400,7 @@ function TabelEditor({ a, set }: { a: LkpdAktivitas; set: (p: Partial<LkpdAktivi
   };
 
   const hapusKolom = (i: number) => {
-    if (kolom.length <= 1 && baris.some((r) => r.sel.some((s) => (s.kunci || "").trim() !== ""))) {
+    if (kolom.length <= 1 && baris.some((r) => r.sel.some(modeSiswa))) {
       if (!confirm("Hapus kolom terakhir beserta seluruh kunci jawabannya?")) return;
     }
     setTabel(kolom.filter((_, j) => j !== i), baris.map((r) => ({ sel: r.sel.filter((_, j) => j !== i) })));
@@ -400,7 +414,7 @@ function TabelEditor({ a, set }: { a: LkpdAktivitas; set: (p: Partial<LkpdAktivi
   };
 
   const hapusBaris = (ri: number) => {
-    if ((baris[ri]?.sel || []).some((s) => (s.kunci || "").trim() !== "") && !confirm(`Hapus baris ${ri + 1} beserta kunci & feedback selnya?`)) return;
+    if ((baris[ri]?.sel || []).some(modeSiswa) && !confirm(`Hapus baris ${ri + 1} beserta kunci & feedback selnya?`)) return;
     setTabel(kolom, baris.filter((_, i) => i !== ri));
   };
 

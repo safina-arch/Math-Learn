@@ -42,13 +42,29 @@ export default function KelolaLkpdPage() {
   const [preview, setPreview] = useState(false);
   const [addBlok, setAddBlok] = useState(false);
   const [simpan, setSimpan] = useState(false);
+  // Snapshot topik saat halaman dibuka — penanda perubahan draft yang belum disimpan.
+  const [refAwal, setRefAwal] = useState<string>("");
 
   useEffect(() => {
     if (ready && topik && !draft) {
       setDraft(topik);
+      setRefAwal(JSON.stringify(topik));
       setSel(topik.subtopics.find((s) => s.id === params.sub)?.missions[0]?.id || null);
     }
   }, [ready, topik, draft, params.sub]);
+
+  const adaPerubahan = Boolean(draft && refAwal && JSON.stringify(draft) !== refAwal);
+
+  // Edit yang belum disimpan tidak boleh hilang diam-diam saat tab ditutup/refresh.
+  useEffect(() => {
+    if (!adaPerubahan) return;
+    const h = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", h);
+    return () => window.removeEventListener("beforeunload", h);
+  }, [adaPerubahan]);
 
   if (!ready) return null;
 
@@ -107,6 +123,7 @@ export default function KelolaLkpdPage() {
   };
 
   const simpanDraft = () => {
+    setRefAwal(JSON.stringify(draft));
     upsertLkpdTopic(draft);
     setSimpan(true);
     setTimeout(kembali, 450);
@@ -141,8 +158,9 @@ export default function KelolaLkpdPage() {
               <button className={`btn !text-[13px] ${preview ? "bg-ink text-white border border-ink" : "btn-ghost"}`} onClick={() => setPreview((v) => !v)}>
                 {preview ? "Kembali ke editor" : "👁 Preview"}
               </button>
-              <button className="btn-ghost !text-[13px]" onClick={kembali}>↩ Batal</button>
+              <button className="btn-ghost !text-[13px]" onClick={() => { if (adaPerubahan && !confirm("Ada perubahan yang belum disimpan. Tinggalkan tanpa menyimpan?")) return; kembali(); }}>↩ Batal</button>
               <button className="btn-primary !text-[13px]" onClick={simpanDraft}>{simpan ? "Tersimpan ✓" : "💾 Save"}</button>
+              {adaPerubahan && !preview ? <span className="self-center text-[12.5px] font-medium text-amber-700">● Belum disimpan</span> : null}
             </div>
           </div>
 
