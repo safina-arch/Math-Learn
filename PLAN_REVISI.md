@@ -353,6 +353,41 @@ Verifikasi: `npm.cmd run build` ✅ lulus (lint + type check, 26 route) → comm
 
 
 
-## Status akhir: SELURUH PLAN SELESAI & LIVE (Gelombang 1–14)
+## Gelombang 15 — media langsung di LKPD + editor tabel "baik & benar" + sinkron edit (2 Nov 2026) ✅ build lulus (27 route) · LIVE (commit `32ceb21` → `e4e25e2` → `627a269`, deploy `dpl_5qVvdUabcaS6FddxP8pqh52rHNiD` → `dpl_4TEk6yMmpcn7ToX4hvcWRMh9MP7t` → `dpl_DevkJCK2phPH4wzzq6qUmfcDRr2c` READY)
+
+### 1. Guru/admin menambah & mengupload media langsung di LKPD (link · foto · video · file)
+- **`components/media-field.tsx` (baru)** — `MediaField` komponen bersama: tempel tautan **ATAU** unggah dari perangkat, pratinjau (gambar/video), nama file + "Buka ↗", tombol "Hapus media", pesan galat (jaringan/413/izin). Dipakai di **4 blok media** editor (`block-editor.tsx`: Gambar/Video/Animasi/Berkas) + **`TopikModal`** (foto sampul topik) — bukan field terpisah per blok.
+- **`app/api/upload/route.ts`**: tipe diperluas — GIF; DOC/DOCX/XLS/XLSX/PPT/PPTX/CSV/TXT/ZIP; MP4/WebM/OGV/OGG/MOV. `contentTypeOf()` = tipe browser dipakai kecuali kosong/`application/octet-stream`, lalu tebak dari ekstensi (curl/lingkungan tertentu tidak menebak MP4/DOCX). **Batas video 4 MB** (`MAX_VIDEO_BYTES`, di bawah body serverless ±4,5 MB) — video besar → tempel tautan YouTube/Drive; 413 platform → pesan ramah "File terlalu besar…".
+- **Renderer**: file video langsung `<video controls>` (`isVideoLangsung`), GIF/gambar `<img>` (`isGambarLangsung`) di `lib/utils.ts` + `blocks.tsx` — bukan iframe embed.
+- **Thumbnail topik** (`hub.tsx`): field sampul yang tadinya mati (tak pernah dirender) kini tampil sebagai banner kartu hub LKPD.
+- **Fix z-index**: menu "+ Add Content" (`z-20`) tertimbun nav bawah `z-40` di layar pendek (item "🖼️ Image" klik → kena link nav "Materi") → backdrop `z-40` + menu `z-50`.
+- **Verifikasi**: API upload PNG/MP4/DOCX/TXT → **200** (URL Supabase), EXE → 400, MP4 5 MB → 413; file uji `materi/…uji-e2e.png` → HTTP 200 (bucket `materi` ada); string produksi ada (`Unggah dari perangkat`, `Foto sampul`, `maksimal 4 MB`, `MP4, WebM`, `DOC/DOCX`); **E2E browser**: unggah nyata via `DataTransfer` → URL Supabase + pratinjau ✓ (draft TIDAK disimpan — data produksi bersih).
+
+### 2. Editor tabel LKPD (`isi-tabel`) — guru & admin mengedit "dengan baik dan benar"
+- **`TabelEditor` baru** (`block-editor.tsx`, menggantikan `SelEditor` kartu-kartu) — tabel sungguhan dengan overflow horizontal:
+  - **Kolom**: rename inline, pindah ◀▶ (sel tiap baris ikut bergeser), hapus ✕ (sel ikut terhapus; konfirmasi bila kolom terakhir berisi kunci).
+  - **Baris**: nomor, pindah ▲▼, duplikat ⧉ (sel termasuk mode kunci ikut tersalin), hapus ✕ (konfirmasi bila berisi sel yang bisa diisi siswa).
+  - **Per sel**: toggle **sel teks (terkunci)** ↔ **sel diisi siswa** (input kunci + feedback benar/salah).
+  - **Auto-init**: guru memilih tipe `isi-tabel` tanpa struktur → kerangka 2 kolom × 1 baris langsung siap diisi.
+  - **`setTabel()` satu jalur**: semua aksi menormalkan panjang sel = jumlah kolom (pad/trim) → struktur selalu sinkron dengan kolom.
+- **Ringkasan instan** "X kolom · Y baris · N sel diisi siswa" dihitung **dari mode sel** (`teks === undefined`), bukan isi kunci — langsung sinkron begitu tombol "jadi sel diisi siswa" ditekan (kunci masih kosong saat itu). Konfirmasi hapus juga memakai mode sel.
+- **Patch tahan baris tak rapi**: `ubahSel` membangun sel sepanjang kolom dulu → klik pada sel "kosong" (data lama kurang sel) tidak pernah sia-sia.
+- **Renderer toleran data lama** di 3 tempat (`activities.tsx` IsiTabel, `blocks.tsx` RingkasAktivitas, `cek.tsx`): header `key={i}` (aman untuk nama kolom kembar) + sel dipad ke `nKolom = max(kolom.length, sel terpanjang)` → tabel selalu sejajar walau ada baris legacy.
+- **Peringatan amber di halaman Kelola**: mission punya blok `isi-tabel` **dan** sudah ada jawaban siswa → "⚠️ Sudah ada siswa yang mengisi mission ini. Mengubah urutan kolom/baris atau menghapus sel akan menggeser posisi kunci jawaban mereka — mengubah teks, kunci, dan feedback tetap aman."
+- Semantik penilaian **tidak berubah** (diverifikasi `lib/lkpd.ts`): hanya sel berkunci non-kosong yang dinilai; kunci kosong tak pernah "benar".
+
+### 3. Sinkronisasi edit — "yang sebelumnya sudah masuk Supabase & edit harus sinkron"
+- **Bukti data**: `GET /api/sync` → 1 topik LKPD + 46 `lkpdProgress` + file media HTTP 200 (semua tersimpan di Supabase; LKPD menulis ke wadah `presence` sesuai fix Gelombang 14).
+- **E2E edit → simpan → Supabase → klien lain**: rename kolom "Keadaan"→"Keadaan uji" di Kelola → 💾 Save → server berubah + `revisiAt` baru → reload halaman klien menampilkan perubahan (localStorage basi tidak menang) → rollback nama asli → server kembali. **Terbukti sinkron end-to-end.**
+- **Perbaikan agar edit tak hilang diam-diam** (`kelola/page.tsx`): snapshot `refAwal` saat halaman dibuka → bila draft berbeda: label **"● Belum disimpan"** di dekat tombol Save, **guard konfirmasi tombol "↩ Batal"**, dan **`beforeunload`** (tab ditutup/refresh → dialog peringatan; terbukti muncul di produksi saat E2E).
+
+### Verifikasi (deploy `dpl_DevkJCK2phPH4wzzq6qUmfcDRr2c`, READY)
+- `npm run build` lulus (27 route) ×3.
+- String chunk produksi: `Unggah dari perangkat`, `jadi sel diisi siswa`, `Duplikat baris`, `Pindah kolom ke kiri`, `Belum ada baris`, `jadi sel teks (terkunci)`, `Belum disimpan`, `Tinggalkan tanpa menyimpan`, `Sudah ada siswa yang mengisi mission ini`.
+- **E2E editor tabel penuh** (admin, mission `pb-dasar-m3`): auto-init 2×1 ✓ · rename kolom ✓ (→Save→server→reload→rollback) · pindah kolom ▶ header bertukar ✓ · `+ Baris` ✓ · duplikat baris (kunci ikut) ✓ · geser baris ▼ urutan 4,6,5,4→6,4,5,4 ✓ · toggle sel → ringkas langsung "5 sel diisi siswa" ✓ · label "Belum disimpan" + dialog `beforeunload` ✓.
+- Data produksi bersih: semua blok isi-tabel kolom=sel per baris konsisten (tidak ada ragged); seluruh E2E tanpa simpan (draft dibuang) atau dengan rollback penuh.
+
+
+## Status akhir: SELURUH PLAN SELESAI & LIVE (Gelombang 1–15)
 
 Tidak ada langkah tersisa. Perubahan berikutnya: edit kode → `git push origin main` → Vercel auto-build (env sudah tersimpan di project Vercel). Kredensial tersimpan di `.env.local` (ter-ignore git).
