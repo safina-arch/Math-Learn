@@ -222,27 +222,39 @@ export interface LkpdPertanyaan {
   /** Petunjuk progresif — muncul satu per satu saat siswa meminta bantuan. */
   petunjuk?: string[];
   feedbackBenar?: string;
+  /** Uraian pendamping (essay) — satu blok bisa memuat PG + uraian sekaligus. */
+  uraian?: boolean;
+  /** Prompt uraian (opsional — default "Tuliskan alasan/uraianmu"). */
+  teksUraian?: string;
 }
 
 /** Aktivitas interaktif Mission 3 (mengumpulkan informasi) & 4 (menalar). */
-export type LkpdAktivitasTipe = "seret-slot" | "cocokkan" | "isi-tabel";
+export type LkpdAktivitasTipe = "seret-slot" | "cocokkan" | "isi-tabel" | "benar-salah" | "urutkan";
 
 export interface LkpdAktivitas {
   tipe: LkpdAktivitasTipe;
   instruksi: string;
-  /** seret-slot: kartu yang diseret ke area → memunculkan hasil (menemukan pola). */
+  /** seret-slot (data lama): satu area tunggal — fallback saat `areas` belum ada. */
   area?: string;
-  kartu?: { id: string; label: string; hasil: string; feedback?: string }[];
+  /** seret-slot: 2 atau lebih area tujuan (nama & jumlah dicustom guru). */
+  areas?: { id: string; nama: string }[];
+  /** seret-slot: kartu dikelompokkan ke area; `kunciArea` = area yang benar (opsional → dinilai). */
+  kartu?: { id: string; label: string; hasil: string; feedback?: string; kunciArea?: string }[];
   /** Ditampilkan setelah seluruh kartu ditempatkan. */
   temuan?: string;
   /** cocokkan: pasangkan kolom kiri dengan kolom kanan. */
   kiri?: { id: string; label: string }[];
   kanan?: { id: string; label: string }[];
   pasangan?: Record<string, string>;
+  /** cocokkan: warna per pasangan (id kiri → hex) — tanpa ini palet otomatis per urutan. */
+  warnaPasangan?: Record<string, string>;
   feedbackSalah?: string;
   /** isi-tabel: siswa mengisi sel kosong (kunci) — menemukan pola lewat angka. */
   kolom?: string[];
   baris?: { sel: LkpdSel[] }[];
+  /** benar-salah: daftar pernyataan + kunci "true"/"false" + feedback. */
+  pernyataan?: { id: string; teks: string; kunci: "true" | "false"; feedbackBenar?: string; feedbackSalah?: string }[];
+  /** urutkan: kunci urutan = urutan kartu pada daftar editor (pakai `kartu`). */
 }
 
 /** Sel tabel: `teks` = terisi (fakta), `kunci` = diisi siswa lalu diperiksa,

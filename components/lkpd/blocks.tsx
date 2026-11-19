@@ -5,7 +5,7 @@ import type { LkpdAktivitas, LkpdBlock } from "@/lib/types";
 import { BLOOM_LABEL } from "@/lib/types";
 import { selSama } from "@/lib/lkpd";
 import { drivePreviewUrl, isDriveUrl, isGambarLangsung, isVideoLangsung, youtubeEmbed } from "@/lib/utils";
-import { Aktivitas } from "./activities";
+import { Aktivitas, daftarAreas, warnaPasangan } from "./activities";
 
 /** Tooltip ikon tipe blok untuk editor/preview. */
 export const BLOCK_LABEL: Record<LkpdBlock["tipe"], string> = {
@@ -30,13 +30,18 @@ export const BLOCK_LABEL: Record<LkpdBlock["tipe"], string> = {
 export function BlokRenderer({
   blok,
   jawaban,
+  uraian,
   onSimpan,
+  onSimpanUraian,
   readOnly = false,
   bukaKunci = false,
 }: {
   blok: LkpdBlock;
   jawaban?: string;
+  /** Isi uraian pendamping PG (kunci `kunciUraian(blok.id)`) — satu blok: PG + essay. */
+  uraian?: string;
   onSimpan?: (teks: string) => void;
+  onSimpanUraian?: (teks: string) => void;
   readOnly?: boolean;
   bukaKunci?: boolean;
 }) {
@@ -146,7 +151,7 @@ export function BlokRenderer({
       return <Refleksi blok={blok} jawaban={jawaban} onSimpan={readOnly ? undefined : onSimpan} readOnly={readOnly} essay />;
 
     case "pertanyaan":
-      return <Pertanyaan blok={blok} jawaban={jawaban} onSimpan={readOnly ? undefined : onSimpan} readOnly={readOnly} bukaKunci={bukaKunci} />;
+      return <Pertanyaan blok={blok} jawaban={jawaban} uraian={uraian} onSimpan={readOnly ? undefined : onSimpan} onSimpanUraian={readOnly ? undefined : onSimpanUraian} readOnly={readOnly} bukaKunci={bukaKunci} />;
 
     case "aktivitas":
       return blok.aktivitas ? (
@@ -181,7 +186,15 @@ export function BloomTag({ bloom }: { bloom?: LkpdBlock["bloom"] }) {
  * Jawaban siswa ditampilkan apa adanya; benar/salah & kunci hanya bila guru mengizinkan.
  */
 function RingkasAktivitas({ a, nilai, tampilkanKunci }: { a: LkpdAktivitas; nilai?: string; tampilkanKunci: boolean }) {
-  type StateRingkas = { diArea?: string[]; pasang?: Record<string, string>; val?: Record<string, string> };
+  type StateRingkas = {
+    diArea?: string[];
+    posisi?: Record<string, string>;
+    pasang?: Record<string, string>;
+    val?: Record<string, string>;
+    urutan?: string[];
+    pilih?: Record<string, string>;
+    dicek?: boolean;
+  };
   let st: StateRingkas | null = null;
   try {
     const o: unknown = nilai ? JSON.parse(nilai) : null;
@@ -190,27 +203,46 @@ function RingkasAktivitas({ a, nilai, tampilkanKunci }: { a: LkpdAktivitas; nila
 
   if (a.tipe === "seret-slot") {
     const kartu = a.kartu || [];
-    const di = (st?.diArea || []).filter((id) => kartu.some((k) => k.id === id));
-    const sisa = kartu.filter((k) => !di.includes(k.id));
+    const areas = daftarAreas(a);
+    const posisi: Record<string, string> = st?.posisi
+      ? st.posisi
+      : Object.fromEntries((st?.diArea || []).filter((id) => kartu.some((k) => k.id === id)).map((id) => [id, areas[0].id]));
+    const ditempatkan = kartu.filter((k) => posisi[k.id]);
+    const sisa = kartu.filter((k) => !posisi[k.id]);
+    const adaKunci = kartu.some((k) => (k.kunciArea || "").trim());
     return (
       <div className="rounded-xl border border-line bg-wash/50 card-pad !p-3.5">
         <p className="text-[13px] font-semibold mb-1">🧩 {a.instruksi}</p>
-        {di.length ? (
-          <ul className="space-y-1.5 mt-2">
-            {di.map((id) => {
-              const k = kartu.find((x) => x.id === id);
-              return k ? (
-                <li key={id} className="text-[13px] rounded-lg border border-line bg-white px-3 py-1.5">
-                  <b>{k.label}</b> → {k.hasil}
-                </li>
-              ) : null;
+        {ditempatkan.length ? (
+          <div className="space-y-2 mt-2">
+            {areas.map((ar) => {
+              const isi = ditempatkan.filter((k) => posisi[k.id] === ar.id);
+              if (!isi.length) return null;
+              return (
+                <div key={ar.id} className="rounded-lg border border-line bg-white px-3 py-2">
+                  <p className="text-[12px] font-semibold uppercase tracking-wide text-ink-faint mb-1">📍 {ar.nama}</p>
+                  <ul className="space-y-1">
+                    {isi.map((k) => {
+                      const benarK = !k.kunciArea || posisi[k.id] === k.kunciArea;
+                      return (
+                        <li key={k.id} className="text-[13px]">
+                          <b>{k.label}</b> → {k.hasil}
+                          {adaKunci && k.kunciArea ? (
+                            <span className={`ml-1.5 font-semibold ${benarK ? "text-green-700" : "text-red-600"}`}>{benarK ? "✓" : "✗"}</span>
+                          ) : null}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              );
             })}
-          </ul>
+          </div>
         ) : (
           <p className="text-[13px] text-ink-faint italic mt-1">Belum ada kartu yang dipindahkan</p>
         )}
         {sisa.length ? <p className="text-[12.5px] text-ink-faint mt-2">Belum dipindahkan: {sisa.map((k) => k.label).join(" · ")}</p> : null}
-        {tampilkanKunci && di.length && a.temuan ? <p className="text-[13px] text-green-700 mt-2">🎉 {a.temuan}</p> : null}
+        {tampilkanKunci && ditempatkan.length && sisa.length === 0 && a.temuan ? <p className="text-[13px] text-green-700 mt-2">🎉 {a.temuan}</p> : null}
       </div>
     );
   }
@@ -227,12 +259,83 @@ function RingkasAktivitas({ a, nilai, tampilkanKunci }: { a: LkpdAktivitas; nila
         {tampilkanKunci && terpasang.length ? (
           <ul className="space-y-1.5 mt-2">
             {terpasang.map((k) => (
-              <li key={k.id} className="text-[13px] rounded-lg border border-line bg-white px-3 py-1.5">
+              <li key={k.id} className="text-[13px] rounded-lg border border-line px-3 py-1.5" style={{ backgroundColor: warnaPasangan(a, k.id) }}>
                 {k.label} ↔ <b>{kanan.find((n) => n.id === pasang[k.id])?.label || "?"}</b>
               </li>
             ))}
           </ul>
         ) : null}
+      </div>
+    );
+  }
+
+  if (a.tipe === "benar-salah") {
+    const pernyataan = a.pernyataan || [];
+    const pilih = st?.pilih || {};
+    const dicek = Boolean(st?.dicek);
+    const terjawab = pernyataan.filter((p) => pilih[p.id]);
+    return (
+      <div className="rounded-xl border border-line bg-wash/50 card-pad !p-3.5">
+        <p className="text-[13px] font-semibold mb-1">✅ {a.instruksi}</p>
+        <p className="text-[13px] text-ink-muted mt-1">{terjawab.length} dari {pernyataan.length} pernyataan sudah dijawab.</p>
+        {terjawab.length ? (
+          <ul className="space-y-1.5 mt-2">
+            {terjawab.map((p, i) => {
+              const benarIni = dicek && pilih[p.id] === p.kunci;
+              const salahIni = dicek && pilih[p.id] !== p.kunci;
+              return (
+                <li
+                  key={p.id}
+                  className={`text-[13px] rounded-lg border px-3 py-1.5 ${benarIni ? "border-green-300 bg-green-50" : salahIni ? "border-red-300 bg-red-50" : "border-line bg-white"}`}
+                >
+                  <span className="text-ink-muted mr-1">{i + 1}.</span>{p.teks}{" "}
+                  <b>Pilihan: {pilih[p.id] === "true" ? "Benar" : "Salah"}</b>
+                  {tampilkanKunci ? (
+                    <span className={`ml-1.5 font-semibold ${pilih[p.id] === p.kunci ? "text-green-700" : "text-red-600"}`}>
+                      {pilih[p.id] === p.kunci ? "✓" : `✗ kunci: ${p.kunci === "true" ? "Benar" : "Salah"}`}
+                    </span>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
+        ) : (
+          <p className="text-[13px] text-ink-faint italic mt-1">Belum ada pernyataan yang dijawab</p>
+        )}
+      </div>
+    );
+  }
+
+  if (a.tipe === "urutkan") {
+    const kartu = a.kartu || [];
+    const urutan = st?.urutan || [];
+    const dicek = Boolean(st?.dicek);
+    const adaIsi = urutan.length > 0 && urutan.some((id) => kartu.some((k) => k.id === id));
+    return (
+      <div className="rounded-xl border border-line bg-wash/50 card-pad !p-3.5">
+        <p className="text-[13px] font-semibold mb-1">🔢 {a.instruksi}</p>
+        {adaIsi ? (
+          <ol className="space-y-1.5 mt-2">
+            {urutan.filter((id) => kartu.some((k) => k.id === id)).map((id, i) => {
+              const k = kartu.find((x) => x.id === id);
+              const ok = kartu[i]?.id === id;
+              return (
+                <li
+                  key={id}
+                  className={`text-[13px] rounded-lg border px-3 py-1.5 ${dicek && ok ? "border-green-300 bg-green-50" : dicek && !ok ? "border-red-300 bg-red-50" : "border-line bg-white"}`}
+                >
+                  {i + 1}. {k?.label}
+                  {dicek && tampilkanKunci ? (
+                    <span className={`ml-1.5 font-semibold ${ok ? "text-green-700" : "text-red-600"}`}>{ok ? "✓" : "✗"}</span>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ol>
+        ) : (
+          <p className="text-[13px] text-ink-faint italic mt-1">Belum ada susunan tersimpan</p>
+        )}
+        {!dicek ? <p className="text-[12.5px] text-ink-faint mt-2">Siswa belum menekan “Periksa urutan”.</p> : null}
       </div>
     );
   }
@@ -378,13 +481,17 @@ function Refleksi({
 function Pertanyaan({
   blok,
   jawaban,
+  uraian,
   onSimpan,
+  onSimpanUraian,
   readOnly = false,
   bukaKunci = false,
 }: {
   blok: LkpdBlock;
   jawaban?: string;
+  uraian?: string;
   onSimpan?: (t: string) => void;
+  onSimpanUraian?: (t: string) => void;
   readOnly?: boolean;
   bukaKunci?: boolean;
 }) {
@@ -438,6 +545,24 @@ function Pertanyaan({
           );
         })}
       </div>
+
+      {/* Uraian pendamping — satu blok bisa memuat PG + essay sekaligus. */}
+      {q.uraian ? (
+        <div className="mt-3 rounded-xl border border-line bg-wash/50 px-3.5 py-2.5">
+          <label className="label !mb-1.5" htmlFor={`uraian-${blok.id}`}>✍️ {q.teksUraian || "Tuliskan alasan / uraian jawabanmu"}</label>
+          <textarea
+            id={`uraian-${blok.id}`}
+            className="input min-h-[80px] bg-white"
+            value={uraian || ""}
+            readOnly={readOnly}
+            placeholder="Tulis uraianmu di sini…"
+            onChange={(e) => onSimpanUraian?.(e.target.value)}
+          />
+          <p className="text-[12px] text-ink-muted mt-1.5">
+            Pilihan ganda dinilai otomatis; uraian ini diperiksa oleh guru beserta feedback-nya.
+          </p>
+        </div>
+      ) : null}
 
       {!dipilih ? null : tampilKunci ? (
         <div className={`mt-3 rounded-lg px-3.5 py-2.5 text-[13.5px] ${benar ? "bg-green-50 border border-green-200 text-green-800" : "bg-amber-50 border border-amber-200 text-amber-900"}`}>

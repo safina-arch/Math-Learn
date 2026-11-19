@@ -1,4 +1,4 @@
-import type { LkpdBlock, LkpdMission, LkpdProgress, LkpdSel, LkpdSubtopic, LkpdTopic } from "./types";
+import type { LkpdAktivitas, LkpdBlock, LkpdMission, LkpdProgress, LkpdSel, LkpdSubtopic, LkpdTopic } from "./types";
 import { nowIso, uid } from "./utils";
 
 /** Enam tahap pembelajaran (saintifik) — dipakai sebagai template mission baru. */
@@ -120,10 +120,24 @@ export function selSama(v: string | undefined, kunci: string | undefined): boole
 
 type StateAktivitas = {
   diArea?: string[];
+  /** seret-slot baru: posisi kartu (kartuId → areaId); absen = masih di pool. */
+  posisi?: Record<string, string>;
   pasang?: Record<string, string>;
   val?: Record<string, string>;
+  /** urutkan: susunan kartu versi siswa. */
+  urutan?: string[];
+  /** benar-salah: pilihan per pernyataan ("true"/"false"). */
+  pilih?: Record<string, string>;
   dicek?: boolean;
 };
+
+/**
+ * Kunci jawaban uraian pendamping pada record `jawaban` — satu blok pertanyaan
+ * bisa menyimpan PG (`jawaban[blokId]`) DAN uraian (`jawaban[blokId::uraian]`).
+ */
+export function kunciUraian(blokId: string): string {
+  return `${blokId}::uraian`;
+}
 
 function parseAktivitas(teks?: string): StateAktivitas | null {
   if (!teks) return null;
@@ -137,12 +151,15 @@ function parseAktivitas(teks?: string): StateAktivitas | null {
 
 /**
  * Benar/salah satu blok. `null` = bukan wewenang sistem
- * (aktivitas seret-slot tidak punya data benar/salah, jadi tidak dinilai otomatis).
+ * (seret-slot tanpa kunci & urutkan yang belum diperiksa tidak dinilai otomatis).
+ * `uraian` = isi uraian pendamping blok pertanyaan (kunci `kunciUraian(id)`).
  */
-export function nilaiBlok(blok: LkpdBlock, jawaban?: string): boolean | null {
+export function nilaiBlok(blok: LkpdBlock, jawaban?: string, uraian?: string): boolean | null {
   if (blok.tipe === "pertanyaan") {
     const q = blok.pertanyaan;
     if (!q || q.opsi.length === 0) return null;
+    // Uraian pendamping belum terisi → blok belum lengkap (menunggu), jangan dinilai dulu.
+    if (q.uraian && !(uraian || "").trim()) return null;
     const n = Number(jawaban);
     if (jawaban == null || jawaban === "" || !Number.isInteger(n) || n < 0 || n >= q.opsi.length) return false;
     return Boolean(q.opsi[n]?.benar);
@@ -170,7 +187,38 @@ export function nilaiBlok(blok: LkpdBlock, jawaban?: string): boolean | null {
     if (kiri.some((k) => !pasang[k.id])) return false; // belum semua terpasang
     return kiri.every((k) => pasang[k.id] === pasangan[k.id]);
   }
-  return null; // seret-slot: proses menemukan pola, bukan jawaban benar/salah
+  if (a.tipe === "seret-slot") {
+    // Dinilai hanya bila guru menandai kunci area pada kartu; tanpa kunci = proses menemukan pola.
+    const kartu = a.kartu || [];
+    const berkunci = kartu.filter((k) => (k.kunciArea || "").trim());
+    if (!berkunci.length) return null;
+    const posisi = posisiKartu(a, st);
+    if (kartu.some((k) => !posisi[k.id])) return null; // belum semua kartu ditempatkan
+    return berkunci.every((k) => posisi[k.id] === k.kunciArea);
+  }
+  if (a.tipe === "benar-salah") {
+    const pernyataan = a.pernyataan || [];
+    if (!pernyataan.length) return null;
+    const pilih = st?.pilih || {};
+    if (pernyataan.some((p) => !pilih[p.id])) return false; // belum semua dijawab
+    return pernyataan.every((p) => pilih[p.id] === p.kunci);
+  }
+  if (a.tipe === "urutkan") {
+    const kartu = a.kartu || [];
+    if (kartu.length < 2) return null;
+    if (!st?.dicek) return null; // belum diperiksa siswa → nilai belum dihitung
+    const urutan = st.urutan || [];
+    if (urutan.length !== kartu.length) return false;
+    return kartu.every((k, i) => urutan[i] === k.id);
+  }
+  return null; // tipe tak dikenal — jangan pernah dinilai otomatis
+}
+
+/** Posisi kartu seret-slot dari state baru (`posisi`) atau state lama (`diArea` → area pertama). */
+function posisiKartu(a: LkpdAktivitas, st: StateAktivitas | null): Record<string, string> {
+  if (st?.posisi) return st.posisi;
+  const areaAwal = a.areas?.[0]?.id || "a0";
+  return Object.fromEntries((st?.diArea || []).map((id) => [id, areaAwal]));
 }
 
 /** Blok terbuka (essay/refleksi) — jawabannya tidak bisa dinilai otomatis dengan aman. */
@@ -200,7 +248,12 @@ export function nilaiKerja(
         if (!(jwb || "").trim()) kurang.push(`${m.judul} · ${b.judul || "jawaban terbuka"}`);
         continue;
       }
-      const hasil = nilaiBlok(b, jwb);
+      // PG + uraian pendamping: PG dinilai otomatis, uraian menunggu pemeriksaan guru.
+      if (b.tipe === "pertanyaan" && b.pertanyaan?.uraian) {
+        terbuka += 1;
+        if (!(p.jawaban[kunciUraian(b.id)] || "").trim()) kurang.push(`${m.judul} · ${b.judul || "uraian pendamping"}`);
+      }
+      const hasil = nilaiBlok(b, jwb, p.jawaban[kunciUraian(b.id)]);
       if (hasil === null) continue;
       uji += 1;
       if (hasil) benar += 1;
@@ -225,7 +278,10 @@ export function missionTerjawab(
     const teks = (jwb || "").trim();
     if (b.tipe === "pertanyaan") {
       const n = Number(jwb);
-      if (!teks || !Number.isInteger(n) || !b.pertanyaan?.opsi[n]) kurang.push(b.judul || "Pertanyaan");
+      const opsiOk = teks && Number.isInteger(n) && Boolean(b.pertanyaan?.opsi[n]);
+      if (!opsiOk) kurang.push(b.judul || "Pertanyaan");
+      // Uraian pendamping (PG + essay dalam satu blok) juga wajib terisi.
+      else if (b.pertanyaan?.uraian && !(jawaban[kunciUraian(b.id)] || "").trim()) kurang.push(b.judul || "Uraian pendamping");
       continue;
     }
     if (b.tipe === "essay" || b.tipe === "refleksi") {
@@ -252,10 +308,23 @@ export function missionTerjawab(
       if (!kiri.length || kiri.some((k) => !pasang[k.id])) kurang.push(b.judul || "Aktivitas cocokkan");
       continue;
     }
-    // seret-slot
+    if (a.tipe === "benar-salah") {
+      const pernyataan = a.pernyataan || [];
+      const pilih = st?.pilih || {};
+      if (!pernyataan.length || pernyataan.some((p) => !pilih[p.id])) kurang.push(b.judul || "Aktivitas benar/salah");
+      continue;
+    }
+    if (a.tipe === "urutkan") {
+      const kartu = a.kartu || [];
+      const urutan = st?.urutan || [];
+      // Wajib menekan "Periksa urutan" (dicek) supaya susunan benar-benar diperiksa.
+      if (kartu.length < 2 || !st?.dicek || urutan.length !== kartu.length) kurang.push(b.judul || "Aktivitas urutkan");
+      continue;
+    }
+    // seret-slot — posisi baru (`posisi`) atau state lama (`diArea`)
     const kartu = a.kartu || [];
-    const di = st?.diArea || [];
-    if (!kartu.length || kartu.some((k) => !di.includes(k.id))) kurang.push(b.judul || "Aktivitas seret");
+    const posisi = posisiKartu(a, st);
+    if (!kartu.length || kartu.some((k) => !posisi[k.id])) kurang.push(b.judul || "Aktivitas seret");
   }
   return { boleh: kurang.length === 0, kurang };
 }

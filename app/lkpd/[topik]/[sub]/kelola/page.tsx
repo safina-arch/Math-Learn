@@ -17,7 +17,7 @@ const JENIS_BLOK: LkpdBlockTipe[] = ["teks", "gambar", "video", "animasi", "berk
 function blokBaru(tipe: LkpdBlockTipe): LkpdBlock {
   const b: LkpdBlock = { id: uid("b"), tipe };
   if (tipe === "pertanyaan") b.pertanyaan = { teks: "", opsi: [{ teks: "", benar: true, feedback: "" }, { teks: "", benar: false, feedback: "" }], petunjuk: [] };
-  if (tipe === "aktivitas") b.aktivitas = { tipe: "seret-slot", instruksi: "", area: "Area", kartu: [], temuan: "" };
+  if (tipe === "aktivitas") b.aktivitas = { tipe: "seret-slot", instruksi: "", areas: [{ id: "a0", nama: "Area 1" }, { id: "a1", nama: "Area 2" }], kartu: [], temuan: "" };
   if (tipe === "essay") {
     // Default HOTS: ajak siswa menjelaskan proses berpikir, bukan sekadar jawaban singkat.
     b.judul = "Pertanyaan essay";

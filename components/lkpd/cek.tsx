@@ -3,9 +3,10 @@
 import { useEffect, useState } from "react";
 import { Badge, Modal } from "@/components/ui";
 import { useStore } from "@/lib/store";
-import { cariProgress, nilaiSubtopic, progresSubtopic, selSama } from "@/lib/lkpd";
+import { cariProgress, kunciUraian, nilaiSubtopic, progresSubtopic, selSama } from "@/lib/lkpd";
 import { fmtDateTime } from "@/lib/utils";
 import { BLOCK_LABEL } from "./blocks";
+import { daftarAreas, warnaPasangan } from "./activities";
 import type { LkpdAktivitas, LkpdBlock } from "@/lib/types";
 
 /** Kunci baris yang sedang dicek guru/admin (data diambil ulang dari store → selalu terkini). */
@@ -13,8 +14,11 @@ export type KunciCek = { siswaId: string; subtopicId: string; topikId: string };
 
 type StateAktivitas = {
   diArea?: string[];
+  posisi?: Record<string, string>;
   pasang?: Record<string, string>;
   val?: Record<string, string>;
+  urutan?: string[];
+  pilih?: Record<string, string>;
   dicek?: boolean;
 };
 
@@ -49,20 +53,22 @@ function ringkasBlok(b: LkpdBlock): string {
  * Ringkasan jawaban siswa untuk kotak feedback per soal.
  * `adaFoto` dipakai bila tak ada jawaban teks — pekerjaan tertulis ada di lampiran mission.
  */
-function ringkasJawaban(b: LkpdBlock, jawaban?: string, adaFoto = false): string {
+function ringkasJawaban(b: LkpdBlock, jawaban?: string, adaFoto = false, uraian?: string): string {
   const teks = jawaban?.trim();
+  const adaUraian = Boolean(uraian && uraian.trim());
   if (teks) {
     if (b.tipe === "pertanyaan") {
       const n = Number(teks);
       const q = b.pertanyaan;
       if (q && Number.isInteger(n) && q.opsi[n]) {
-        return `Pilihan siswa: ${String.fromCharCode(65 + n)}. ${potong(q.opsi[n].teks, 140)}`;
+        return `Pilihan siswa: ${String.fromCharCode(65 + n)}. ${potong(q.opsi[n].teks, 140)}${adaUraian ? " · uraian pendamping terisi" : ""}`;
       }
       return potong(teks, 140);
     }
     if (b.tipe === "aktivitas") return "Jawaban aktivitas tersimpan — lihat ringkasan isi kerja di atas.";
     return potong(teks, 220);
   }
+  if (adaUraian) return `Uraian pendamping terisi: ${potong(uraian || "", 200)}`;
   if (adaFoto) return "📷 Foto jawaban — lihat lampiran mission di bawah.";
   return "Belum dijawab.";
 }
@@ -87,7 +93,7 @@ function FeedbackBlok({ id, nilai, onChange }: { id: string; nilai: string; onCh
 }
 
 /** Satu content block pada sudut pandang pemeriksa: isi kerja siswa, bukan alur interaktif. */
-function BlokCek({ blok, jawaban }: { blok: LkpdBlock; jawaban?: string }) {
+function BlokCek({ blok, jawaban, uraian }: { blok: LkpdBlock; jawaban?: string; uraian?: string }) {
   switch (blok.tipe) {
     case "refleksi":
     case "essay":
@@ -147,6 +153,17 @@ function BlokCek({ blok, jawaban }: { blok: LkpdBlock; jawaban?: string }) {
               <b>Umpan balik untuk siswa:</b> {dipilih.feedback}
             </p>
           ) : null}
+          {q.uraian ? (
+            <div className="mt-2">
+              <p className="text-[12px] font-semibold uppercase tracking-wide text-ink-faint mb-1">✍️ Uraian pendamping siswa</p>
+              {uraian && uraian.trim() ? (
+                <p className="text-[13.5px] text-ink-soft whitespace-pre-wrap bg-wash border border-line rounded-lg px-3 py-2 leading-relaxed">{uraian}</p>
+              ) : (
+                <p className="text-[13px] text-ink-faint italic">Siswa belum menulis uraian</p>
+              )}
+              <p className="text-[12px] text-ink-faint mt-1">Dinilai manual — tentukan nilainya di panel bawah.</p>
+            </div>
+          ) : null}
         </div>
       );
     }
@@ -186,27 +203,45 @@ function BlokCek({ blok, jawaban }: { blok: LkpdBlock; jawaban?: string }) {
 function IsiAktivitas({ a, st }: { a: LkpdAktivitas; st: StateAktivitas | null }) {
   if (a.tipe === "seret-slot") {
     const kartu = a.kartu || [];
-    const di = (st?.diArea || []).filter((id) => kartu.some((k) => k.id === id));
-    const sisa = kartu.filter((k) => !di.includes(k.id));
+    const areas = daftarAreas(a);
+    const posisi: Record<string, string> = st?.posisi
+      ? st.posisi
+      : Object.fromEntries((st?.diArea || []).filter((id) => kartu.some((k) => k.id === id)).map((id) => [id, areas[0].id]));
+    const ditempatkan = kartu.filter((k) => posisi[k.id]);
+    const sisa = kartu.filter((k) => !posisi[k.id]);
+    const adaKunci = kartu.some((k) => (k.kunciArea || "").trim());
     return (
       <div>
-        {di.length === 0 ? (
+        {ditempatkan.length === 0 ? (
           <p className="text-[13px] text-ink-faint italic">Belum ada kartu yang dipindahkan</p>
         ) : (
-          <ul className="space-y-1.5">
-            {di.map((id) => {
-              const k = kartu.find((x) => x.id === id);
-              if (!k) return null;
+          <div className="space-y-2">
+            {areas.map((ar) => {
+              const isi = ditempatkan.filter((k) => posisi[k.id] === ar.id);
+              if (!isi.length) return null;
               return (
-                <li key={id} className="text-[13px] bg-wash border border-line rounded-lg px-3 py-1.5">
-                  👷 <b>{k.label}</b> → {k.hasil}
-                </li>
+                <div key={ar.id} className="rounded-lg border border-line bg-white px-3 py-2">
+                  <p className="text-[12px] font-semibold uppercase tracking-wide text-ink-faint mb-1">📍 {ar.nama}</p>
+                  <ul className="space-y-1">
+                    {isi.map((k) => {
+                      const benarK = !k.kunciArea || posisi[k.id] === k.kunciArea;
+                      return (
+                        <li key={k.id} className="text-[13px] bg-wash border border-line rounded-lg px-3 py-1.5">
+                          👷 <b>{k.label}</b> → {k.hasil}
+                          {adaKunci && k.kunciArea ? (
+                            <span className={`ml-1.5 font-semibold ${benarK ? "text-green-700" : "text-red-600"}`}>{benarK ? "✓ benar" : "✗ belum tepat"}</span>
+                          ) : null}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
               );
             })}
-          </ul>
+          </div>
         )}
         {sisa.length ? <p className="text-[12.5px] text-ink-faint mt-2">Belum dipindahkan: {sisa.map((k) => k.label).join(" · ")}</p> : null}
-        {di.length > 0 && a.temuan ? <p className="text-[13px] text-green-700 mt-2">🎉 {a.temuan}</p> : null}
+        {ditempatkan.length > 0 && sisa.length === 0 && a.temuan ? <p className="text-[13px] text-green-700 mt-2">🎉 {a.temuan}</p> : null}
       </div>
     );
   }
@@ -226,7 +261,7 @@ function IsiAktivitas({ a, st }: { a: LkpdAktivitas; st: StateAktivitas | null }
             {terpasang.map((k) => {
               const n = kanan.find((x) => x.id === pasang[k.id]);
               return (
-                <li key={k.id} className="text-[13px] bg-wash border border-line rounded-lg px-3 py-1.5">
+                <li key={k.id} className="text-[13px] border border-line rounded-lg px-3 py-1.5" style={{ backgroundColor: warnaPasangan(a, k.id) }}>
                   {k.label} ↔ <b>{n?.label || "?"}</b> <span className="text-green-700 font-semibold">✓</span>
                 </li>
               );
@@ -235,6 +270,75 @@ function IsiAktivitas({ a, st }: { a: LkpdAktivitas; st: StateAktivitas | null }
         )}
         {belum.length ? <p className="text-[12.5px] text-ink-faint mt-2">Belum terpasang: {belum.map((k) => k.label).join(" · ")}</p> : null}
         {terpasang.length > 0 && belum.length === 0 ? <p className="text-[13px] text-green-700 mt-2">🎉 Semua pasangan benar.</p> : null}
+      </div>
+    );
+  }
+
+  if (a.tipe === "benar-salah") {
+    const pernyataan = a.pernyataan || [];
+    const pilih = st?.pilih || {};
+    const dicek = Boolean(st?.dicek);
+    const terjawab = pernyataan.filter((p) => pilih[p.id]);
+    return (
+      <div>
+        {terjawab.length === 0 ? (
+          <p className="text-[13px] text-ink-faint italic">Belum ada pernyataan yang dijawab</p>
+        ) : (
+          <ul className="space-y-1.5">
+            {terjawab.map((p, i) => {
+              const benarIni = dicek && pilih[p.id] === p.kunci;
+              const salahIni = dicek && pilih[p.id] !== p.kunci;
+              return (
+                <li
+                  key={p.id}
+                  className={`text-[13px] border rounded-lg px-3 py-1.5 ${benarIni ? "border-green-300 bg-green-50" : salahIni ? "border-red-300 bg-red-50" : "border-line bg-white"}`}
+                >
+                  <span className="text-ink-muted mr-1">{i + 1}.</span>{p.teks}{" "}
+                  <b>Pilihan: {pilih[p.id] === "true" ? "Benar" : "Salah"}</b>
+                  <span className={`ml-1.5 font-semibold ${pilih[p.id] === p.kunci ? "text-green-700" : "text-red-600"}`}>
+                    {pilih[p.id] === p.kunci ? "✓" : `✗ kunci: ${p.kunci === "true" ? "Benar" : "Salah"}`}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        <p className="text-[12.5px] mt-2 text-ink-muted">
+          {dicek ? "Siswa sudah menekan “Periksa jawaban”." : "Siswa belum menekan “Periksa jawaban” — benar/salah belum dihitung otomatis."}
+        </p>
+      </div>
+    );
+  }
+
+  if (a.tipe === "urutkan") {
+    const kartu = a.kartu || [];
+    const urutan = (st?.urutan || []).filter((id) => kartu.some((k) => k.id === id));
+    const dicek = Boolean(st?.dicek);
+    if (urutan.length === 0) return <p className="text-[13px] text-ink-faint italic">Belum ada susunan tersimpan</p>;
+    return (
+      <div>
+        <ol className="space-y-1.5">
+          {urutan.map((id, i) => {
+            const k = kartu.find((x) => x.id === id);
+            const ok = kartu[i]?.id === id;
+            return (
+              <li
+                key={id}
+                className={`text-[13px] border rounded-lg px-3 py-1.5 ${dicek && ok ? "border-green-300 bg-green-50" : dicek && !ok ? "border-red-300 bg-red-50" : "border-line bg-white"}`}
+              >
+                {i + 1}. <b>{k?.label}</b>
+                {dicek ? (
+                  <span className={`ml-1.5 font-semibold ${ok ? "text-green-700" : "text-red-600"}`}>
+                    {ok ? "✓" : `✗ seharusnya: ${kartu[i]?.label || "?"}`}
+                  </span>
+                ) : null}
+              </li>
+            );
+          })}
+        </ol>
+        <p className="text-[12.5px] mt-2 text-ink-muted">
+          {dicek ? "Siswa sudah menekan “Periksa urutan” — hijau = sesuai kunci." : "Siswa belum menekan “Periksa urutan” — susunan belum dinilai otomatis."}
+        </p>
       </div>
     );
   }
@@ -445,23 +549,24 @@ export function CekKerjaLkpd({ kunci, onClose }: { kunci: KunciCek | null; onClo
                 ) : (
                   m.blok.map((b) => {
                     const jawab = progres?.jawaban[b.id];
+                    const uraianTeks = b.tipe === "pertanyaan" ? progres?.jawaban[kunciUraian(b.id)] : undefined;
                     const adaFoto = (progres?.lampiran?.[m.id]?.length || 0) > 0;
                     const fbTersimpan = progres?.feedbackBlok?.[b.id] || "";
-                    const adaJawabTeks = Boolean(jawab && jawab.trim());
+                    const adaJawabTeks = Boolean((jawab && jawab.trim()) || (uraianTeks && uraianTeks.trim()));
                     // Feedback per soal hanya untuk blok yang menampilkan jawaban siswa —
                     // atau blok yang sudah pernah diberi feedback guru (agar bisa diedit ulang).
                     if (!adaJawabTeks && !fbTersimpan && !(adaFoto && TIPE_JAWAB.includes(b.tipe))) {
-                      return <BlokCek key={b.id} blok={b} jawaban={jawab} />;
+                      return <BlokCek key={b.id} blok={b} jawaban={jawab} uraian={uraianTeks} />;
                     }
                     return (
                       <div key={b.id}>
-                        <BlokCek blok={b} jawaban={jawab} />
+                        <BlokCek blok={b} jawaban={jawab} uraian={uraianTeks} />
                         <div className="rounded-lg border border-dashed border-primary-200 bg-primary-50/40 px-3.5 py-2.5">
                           <p className="text-[12.5px] font-medium text-ink-soft line-clamp-2 mb-1.5">
                             🧾 <span className="text-ink-faint">Ringkasan soal:</span> {ringkasBlok(b)}
                           </p>
                           <p className="text-[12.5px] text-ink-muted bg-white border border-line rounded-lg px-3 py-1.5 mb-2">
-                            <b>Jawaban siswa:</b> {ringkasJawaban(b, jawab, adaFoto)}
+                            <b>Jawaban siswa:</b> {ringkasJawaban(b, jawab, adaFoto, uraianTeks)}
                           </p>
                           <FeedbackBlok
                             id={b.id}

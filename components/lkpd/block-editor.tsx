@@ -1,10 +1,13 @@
 "use client";
 
+import { useRef } from "react";
+import type { ClipboardEvent, KeyboardEvent } from "react";
 import type { LkpdAktivitas, LkpdBloom, LkpdBlock, LkpdSel } from "@/lib/types";
 import { BLOOM_LABEL } from "@/lib/types";
 import { uid } from "@/lib/utils";
 import { MediaField } from "@/components/media-field";
 import { BLOCK_LABEL } from "./blocks";
+import { PALET_PASANGAN } from "./activities";
 
 type Patch = Partial<LkpdBlock>;
 
@@ -215,6 +218,31 @@ function PertanyaanEditor({ blok, onChange }: { blok: LkpdBlock; onChange: (p: P
         <label className="label">Petunjuk progresif (satu baris = satu petunjuk)</label>
         <textarea className="input min-h-[60px]" value={(q.petunjuk || []).join("\n")} onChange={(e) => set({ petunjuk: e.target.value.split("\n").filter((x) => x.trim() !== "") })} />
       </div>
+
+      <div className="rounded-lg border border-line bg-wash/50 p-2.5 space-y-2">
+        <label className="flex items-center gap-2 text-[13px] font-medium cursor-pointer">
+          <input
+            type="checkbox"
+            className="h-4 w-4 accent-teal-600"
+            checked={Boolean(q.uraian)}
+            onChange={(e) => set({ uraian: e.target.checked || undefined, teksUraian: e.target.checked ? q.teksUraian || undefined : undefined })}
+          />
+          ✍️ Sertakan uraian pendamping (essay) — satu blok memuat pilihan ganda + uraian
+        </label>
+        {q.uraian ? (
+          <>
+            <input
+              className="input !py-1.5 !text-[13px]"
+              placeholder="Prompt uraian (mis. Jelaskan alasanmu memilih jawaban itu)"
+              value={q.teksUraian || ""}
+              onChange={(e) => set({ teksUraian: e.target.value || undefined })}
+            />
+            <p className="text-[12px] text-ink-muted">
+              Pilihan ganda dinilai otomatis; uraian menunggu pemeriksaan guru (tampil pada 👁 Periksa) dan wajib diisi siswa agar mission bisa selesai.
+            </p>
+          </>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -223,6 +251,13 @@ function PertanyaanEditor({ blok, onChange }: { blok: LkpdBlock; onChange: (p: P
 function AktivitasEditor({ blok, onChange }: { blok: LkpdBlock; onChange: (p: Patch) => void }) {
   const a = blok.aktivitas || { tipe: "seret-slot" as const, instruksi: "" };
   const set = (p: Partial<LkpdAktivitas>) => onChange({ aktivitas: { ...a, ...p } });
+  // Daftar area efektif — turunannya SAMA dengan fallback renderer supaya konsisten
+  // walau `areas` belum pernah disimpan.
+  const areasEfektif = a.areas?.length
+    ? a.areas
+    : a.area
+      ? [{ id: "a0", nama: a.area }]
+      : [{ id: "a0", nama: "Area 1" }, { id: "a1", nama: "Area 2" }];
 
   return (
     <div className="space-y-3">
@@ -241,41 +276,119 @@ function AktivitasEditor({ blok, onChange }: { blok: LkpdBlock; onChange: (p: Pa
                 patch.kolom = ["Kolom 1", "Kolom 2"];
                 patch.baris = [{ sel: [{ teks: "" }, { teks: "" }] }];
               }
+              // Kerangka awal aktivitas baru supaya guru langsung bisa mengisi.
+              if (tipe === "benar-salah" && !(a.pernyataan || []).length) {
+                patch.pernyataan = [
+                  { id: uid("p"), teks: "", kunci: "true" },
+                  { id: uid("p"), teks: "", kunci: "false" },
+                ];
+              }
+              if (tipe === "urutkan" && (a.kartu || []).length < 2) {
+                patch.kartu = [
+                  { id: uid("k"), label: "", hasil: "", feedback: "" },
+                  { id: uid("k"), label: "", hasil: "", feedback: "" },
+                  { id: uid("k"), label: "", hasil: "", feedback: "" },
+                ];
+              }
+              if (tipe === "seret-slot" && !(a.areas || []).length && !a.area) {
+                patch.areas = [
+                  { id: "a0", nama: "Area 1" },
+                  { id: "a1", nama: "Area 2" },
+                ];
+              }
               set(patch);
             }}
           >
             <option value="seret-slot">🧩 Seret ke area (drag & drop)</option>
             <option value="cocokkan">🔗 Cocokkan pasangan</option>
             <option value="isi-tabel">📊 Isi tabel / manipulasi angka</option>
+            <option value="benar-salah">✅ Benar / Salah</option>
+            <option value="urutkan">🔢 Urutkan kartu</option>
           </select>
         </div>
         <div>
-          <label className="label">Instruksi untuk siswa</label>
-          <input className="input" value={a.instruksi} onChange={(e) => set({ instruksi: e.target.value })} />
+          <label className="label">Instruksi untuk siswa (Enter = baris baru)</label>
+          <textarea
+            className="input min-h-[70px]"
+            value={a.instruksi}
+            placeholder="mis. Kelompokkan kartu ke area yang sesuai…&#10;Boleh lebih dari satu baris."
+            onChange={(e) => set({ instruksi: e.target.value })}
+          />
         </div>
       </div>
 
       {a.tipe === "seret-slot" ? (
         <>
           <div>
-            <label className="label">Nama area jatuh</label>
-            <input className="input" value={a.area || ""} placeholder="Area kondisi baru" onChange={(e) => set({ area: e.target.value })} />
+            <label className="label">Area tujuan (2 atau lebih — nama & jumlah bebas dicustom)</label>
+            <div className="space-y-1.5">
+              {(areasEfektif).map((ar, i, list) => (
+                <div key={ar.id} className="flex gap-2 items-center">
+                  <span className="text-[12px] text-ink-faint w-5 shrink-0">{i + 1}.</span>
+                  <input
+                    className="input !py-1.5"
+                    placeholder={`Area ${i + 1}`}
+                    value={ar.nama}
+                    aria-label={`Nama area ${i + 1}`}
+                    onChange={(e) => set({ areas: list.map((x, j) => (j === i ? { ...x, nama: e.target.value } : x)) })}
+                  />
+                  <button
+                    className="btn-danger !px-2 !py-1 !text-[12px] shrink-0"
+                    title={list.length <= 2 ? "Minimal 2 area" : "Hapus area ini"}
+                    disabled={list.length <= 2}
+                    onClick={() => {
+                      const sisa = list.filter((_, j) => j !== i).map((x) => ({ ...x }));
+                      // Kartu yang terkunci ke area terhapus → kuncinya dilepas.
+                      const kartu = (a.kartu || []).map((k) => (k.kunciArea === ar.id ? { ...k, kunciArea: undefined } : k));
+                      set({ areas: sisa, kartu });
+                    }}
+                  >✕</button>
+                </div>
+              ))}
+            </div>
+            <button
+              className="btn-ghost !py-1.5 !text-[12.5px] mt-2"
+              disabled={(areasEfektif).length >= 8}
+              onClick={() => {
+                const list = areasEfektif;
+                set({ areas: [...list, { id: uid("a"), nama: `Area ${list.length + 1}` }] });
+              }}
+            >+ Tambah area</button>
+            <p className="text-[12px] text-ink-faint mt-1">Siswa menyeret/memilih kartu dari pool ke salah satu area ini.</p>
           </div>
           <div>
             <label className="label">Kartu (label · hasil yang muncul · feedback)</label>
             <div className="space-y-2">
-              {(a.kartu || []).map((k, i) => (
-                <div key={i} className="rounded-lg border border-line p-2.5 space-y-2">
-                  <div className="flex gap-2">
-                    <input className="input !py-1.5" placeholder="Label (6 pekerja)" value={k.label} onChange={(e) => set({ kartu: (a.kartu || []).map((x, j) => (j === i ? { ...x, label: e.target.value } : x)) })} />
-                    <input className="input !py-1.5" placeholder="Hasil (6 pekerja → 8 hari)" value={k.hasil} onChange={(e) => set({ kartu: (a.kartu || []).map((x, j) => (j === i ? { ...x, hasil: e.target.value } : x)) })} />
-                    <button className="btn-danger !px-2 !py-1 !text-[12px]" onClick={() => set({ kartu: (a.kartu || []).filter((_, j) => j !== i) })}>✕</button>
+              {(a.kartu || []).map((k, i) => {
+                const areas = areasEfektif;
+                return (
+                  <div key={i} className="rounded-lg border border-line p-2.5 space-y-2">
+                    <div className="flex gap-2">
+                      <input className="input !py-1.5" placeholder="Label (6 pekerja)" value={k.label} onChange={(e) => set({ kartu: (a.kartu || []).map((x, j) => (j === i ? { ...x, label: e.target.value } : x)) })} />
+                      <input className="input !py-1.5" placeholder="Hasil (6 pekerja → 8 hari)" value={k.hasil} onChange={(e) => set({ kartu: (a.kartu || []).map((x, j) => (j === i ? { ...x, hasil: e.target.value } : x)) })} />
+                      <button className="btn-danger !px-2 !py-1 !text-[12px]" onClick={() => set({ kartu: (a.kartu || []).filter((_, j) => j !== i) })}>✕</button>
+                    </div>
+                    <input className="input !py-1.5 !text-[13px]" placeholder="Feedback setelah kartu ditempatkan" value={k.feedback || ""} onChange={(e) => set({ kartu: (a.kartu || []).map((x, j) => (j === i ? { ...x, feedback: e.target.value } : x)) })} />
+                    <div className="flex items-center gap-2">
+                      <label className="text-[12px] text-ink-muted shrink-0">Kunci area (opsional):</label>
+                      <select
+                        className="input !py-1 !text-[12.5px]"
+                        value={k.kunciArea || ""}
+                        aria-label={`Area yang benar untuk kartu ${i + 1}`}
+                        onChange={(e) => set({ kartu: (a.kartu || []).map((x, j) => (j === i ? { ...x, kunciArea: e.target.value || undefined } : x)) })}
+                      >
+                        <option value="">— area bebas (tidak dinilai) —</option>
+                        {areas.map((ar) => (
+                          <option key={ar.id} value={ar.id}>✓ {ar.nama}</option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
-                  <input className="input !py-1.5 !text-[13px]" placeholder="Feedback setelah kartu ditempatkan" value={k.feedback || ""} onChange={(e) => set({ kartu: (a.kartu || []).map((x, j) => (j === i ? { ...x, feedback: e.target.value } : x)) })} />
-                </div>
-              ))}
+                );
+              })}
             </div>
             <button className="btn-ghost !py-1.5 !text-[12.5px] mt-2" onClick={() => set({ kartu: [...(a.kartu || []), { id: uid("k"), label: "", hasil: "", feedback: "" }] })}>+ Tambah kartu</button>
+            <p className="text-[12px] text-ink-faint mt-1">Isi “kunci area” bila kartu ini punya area yang benar → langsung dinilai hijau/merah saat ditempatkan.</p>
           </div>
           <div>
             <label className="label">Temuan (muncul setelah semua kartu ditempatkan)</label>
@@ -284,39 +397,166 @@ function AktivitasEditor({ blok, onChange }: { blok: LkpdBlock; onChange: (p: Pa
         </>
       ) : null}
 
+      {a.tipe === "urutkan" ? (
+        <div>
+          <label className="label">Kartu — urutan di daftar ini = urutan BENAR (kunci jawaban)</label>
+          <div className="space-y-2">
+            {(a.kartu || []).map((k, i) => (
+              <div key={i} className="rounded-lg border border-line p-2.5 space-y-2">
+                <div className="flex gap-2 items-center">
+                  <span className="text-[12px] font-semibold text-ink-muted w-5 shrink-0">{i + 1}.</span>
+                  <input
+                    className="input !py-1.5"
+                    placeholder={`Langkah ${i + 1} (urutan benar)`}
+                    aria-label={`Langkah ${i + 1}`}
+                    value={k.label}
+                    onChange={(e) => set({ kartu: (a.kartu || []).map((x, j) => (j === i ? { ...x, label: e.target.value } : x)) })}
+                  />
+                  <button
+                    className="btn-danger !px-2 !py-1 !text-[12px]"
+                    title={((a.kartu || []).length <= 2) ? "Minimal 2 kartu" : "Hapus kartu"}
+                    disabled={(a.kartu || []).length <= 2}
+                    onClick={() => set({ kartu: (a.kartu || []).filter((_, j) => j !== i) })}
+                  >✕</button>
+                </div>
+                <input
+                  className="input !py-1.5 !text-[13px]"
+                  placeholder="Feedback bila urutan kartu ini salah (opsional)"
+                  value={k.feedback || ""}
+                  onChange={(e) => set({ kartu: (a.kartu || []).map((x, j) => (j === i ? { ...x, feedback: e.target.value } : x)) })}
+                />
+              </div>
+            ))}
+          </div>
+          <button
+            className="btn-ghost !py-1.5 !text-[12.5px] mt-2"
+            onClick={() => set({ kartu: [...(a.kartu || []), { id: uid("k"), label: "", hasil: "", feedback: "" }] })}
+          >+ Tambah kartu</button>
+          <p className="text-[12px] text-ink-faint mt-1">
+            Untuk siswa, daftar ini dimulai dalam keadaan <b>dibalik</b> — mereka menyusunnya kembali (seret / tombol ↑▼, ada Undo), lalu menekan “Periksa urutan”.
+          </p>
+        </div>
+      ) : null}
+
+      {a.tipe === "benar-salah" ? (
+        <div>
+          <label className="label">Pernyataan — tentukan kunci Benar/Salah + feedback</label>
+          <div className="space-y-2">
+            {(a.pernyataan || []).map((p, i) => (
+              <div key={p.id} className="rounded-lg border border-line p-2.5 space-y-2">
+                <div className="flex gap-2 items-center">
+                  <span className="text-[12px] font-semibold text-ink-muted w-5 shrink-0">{i + 1}.</span>
+                  <input
+                    className="input !py-1.5"
+                    placeholder="Tulis pernyataan…"
+                    aria-label={`Pernyataan ${i + 1}`}
+                    value={p.teks}
+                    onChange={(e) => set({ pernyataan: (a.pernyataan || []).map((x, j) => (j === i ? { ...x, teks: e.target.value } : x)) })}
+                  />
+                  <button
+                    className="btn-danger !px-2 !py-1 !text-[12px]"
+                    onClick={() => set({ pernyataan: (a.pernyataan || []).filter((_, j) => j !== i) })}
+                  >✕</button>
+                </div>
+                <div className="flex gap-2 items-center flex-wrap">
+                  <label className="text-[12px] text-ink-muted shrink-0">Kunci:</label>
+                  <select
+                    className="input !py-1 !text-[12.5px] !w-auto"
+                    value={p.kunci}
+                    aria-label={`Kunci pernyataan ${i + 1}`}
+                    onChange={(e) => set({ pernyataan: (a.pernyataan || []).map((x, j) => (j === i ? { ...x, kunci: e.target.value as "true" | "false" } : x)) })}
+                  >
+                    <option value="true">✓ Benar</option>
+                    <option value="false">✗ Salah</option>
+                  </select>
+                  <input
+                    className="input !py-1.5 !text-[13px] flex-1 min-w-[180px]"
+                    placeholder="Feedback bila jawaban siswa benar"
+                    value={p.feedbackBenar || ""}
+                    onChange={(e) => set({ pernyataan: (a.pernyataan || []).map((x, j) => (j === i ? { ...x, feedbackBenar: e.target.value || undefined } : x)) })}
+                  />
+                </div>
+                <input
+                  className="input !py-1.5 !text-[13px]"
+                  placeholder="Feedback bila jawaban siswa salah (opsional)"
+                  value={p.feedbackSalah || ""}
+                  onChange={(e) => set({ pernyataan: (a.pernyataan || []).map((x, j) => (j === i ? { ...x, feedbackSalah: e.target.value || undefined } : x)) })}
+                />
+              </div>
+            ))}
+            {(a.pernyataan || []).length === 0 ? (
+              <p className="text-[13px] text-ink-faint italic">Belum ada pernyataan — klik “+ Tambah pernyataan”.</p>
+            ) : null}
+          </div>
+          <button
+            className="btn-ghost !py-1.5 !text-[12.5px] mt-2"
+            onClick={() => set({ pernyataan: [...(a.pernyataan || []), { id: uid("p"), teks: "", kunci: "true" }] })}
+          >+ Tambah pernyataan</button>
+        </div>
+      ) : null}
+
       {a.tipe === "cocokkan" ? (
         <>
           <div>
             <label className="label">Pasangan (kiri → kanan, dijodohkan per baris)</label>
             <div className="space-y-2">
               {(a.kiri || []).map((k, i) => (
-                <div key={i} className="flex gap-2 items-center">
-                  <input
-                    className="input !py-1.5"
-                    placeholder="Kolom A"
-                    value={k.label}
-                    onChange={(e) => {
-                      const kiri = (a.kiri || []).map((x, j) => (j === i ? { ...x, label: e.target.value } : x));
-                      const kanan = a.kanan || [];
-                      set({ kiri, pasangan: Object.fromEntries(kiri.map((x, j) => [x.id, kanan[j]?.id || ""])) });
-                    }}
-                  />
-                  <span>→</span>
-                  <input
-                    className="input !py-1.5"
-                    placeholder="Kolom B (pasangan tepat)"
-                    value={(a.kanan || [])[i]?.label || ""}
-                    onChange={(e) => {
-                      const kanan = (a.kanan || []).map((x, j) => (j === i ? { ...x, label: e.target.value } : x));
-                      const kiri = a.kiri || [];
-                      set({ kanan, pasangan: Object.fromEntries(kiri.map((x, j) => [x.id, kanan[j]?.id || ""])) });
-                    }}
-                  />
-                  <button className="btn-danger !px-2 !py-1 !text-[12px]" onClick={() => {
-                    const kiri = (a.kiri || []).filter((_, j) => j !== i);
-                    const kanan = (a.kanan || []).filter((_, j) => j !== i);
-                    set({ kiri, kanan, pasangan: Object.fromEntries(kiri.map((x, j) => [x.id, kanan[j]?.id || ""])) });
-                  }}>✕</button>
+                <div key={i} className="rounded-lg border border-line p-2 space-y-1.5">
+                  <div className="flex gap-2 items-center">
+                    <input
+                      className="input !py-1.5"
+                      placeholder="Kolom A"
+                      value={k.label}
+                      onChange={(e) => {
+                        const kiri = (a.kiri || []).map((x, j) => (j === i ? { ...x, label: e.target.value } : x));
+                        const kanan = a.kanan || [];
+                        set({ kiri, pasangan: Object.fromEntries(kiri.map((x, j) => [x.id, kanan[j]?.id || ""])) });
+                      }}
+                    />
+                    <span>→</span>
+                    <input
+                      className="input !py-1.5"
+                      placeholder="Kolom B (pasangan tepat)"
+                      value={(a.kanan || [])[i]?.label || ""}
+                      onChange={(e) => {
+                        const kanan = (a.kanan || []).map((x, j) => (j === i ? { ...x, label: e.target.value } : x));
+                        const kiri = a.kiri || [];
+                        set({ kanan, pasangan: Object.fromEntries(kiri.map((x, j) => [x.id, kanan[j]?.id || ""])) });
+                      }}
+                    />
+                    <button className="btn-danger !px-2 !py-1 !text-[12px]" onClick={() => {
+                      const kiri = (a.kiri || []).filter((_, j) => j !== i);
+                      const kanan = (a.kanan || []).filter((_, j) => j !== i);
+                      const warna = { ...(a.warnaPasangan || {}) };
+                      delete warna[k.id];
+                      set({ kiri, kanan, pasangan: Object.fromEntries(kiri.map((x, j) => [x.id, kanan[j]?.id || ""])), warnaPasangan: warna });
+                    }}>✕</button>
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-wrap pl-1">
+                    <span className="text-[11.5px] text-ink-faint">Warna pasangan:</span>
+                    <button
+                      className={`text-[11.5px] px-1.5 py-0.5 rounded border ${!a.warnaPasangan?.[k.id] ? "border-primary bg-primary-50 text-primary font-semibold" : "border-line text-ink-muted hover:border-primary-200"}`}
+                      title="Warna otomatis (berurutan)"
+                      onClick={() => {
+                        const warna = { ...(a.warnaPasangan || {}) };
+                        delete warna[k.id];
+                        set({ warnaPasangan: Object.keys(warna).length ? warna : undefined });
+                      }}
+                    >auto</button>
+                    {PALET_PASANGAN.map((c) => {
+                      const aktif = a.warnaPasangan?.[k.id] === c;
+                      return (
+                        <button
+                          key={c}
+                          className={`h-5 w-5 rounded-full border transition-transform ${aktif ? "border-ink ring-2 ring-primary scale-110" : "border-black/10 hover:scale-110"}`}
+                          style={{ backgroundColor: c }}
+                          title={`Pakai warna ${c}`}
+                          aria-label={`Warna ${c}`}
+                          onClick={() => set({ warnaPasangan: { ...(a.warnaPasangan || {}), [k.id]: c } })}
+                        />
+                      );
+                    })}
+                  </div>
                 </div>
               ))}
             </div>
@@ -329,7 +569,7 @@ function AktivitasEditor({ blok, onChange }: { blok: LkpdBlock; onChange: (p: Pa
                 set({ kiri, kanan, pasangan: Object.fromEntries(kiri.map((x, j) => [x.id, kanan[j]?.id || ""])) });
               }}
             >+ Tambah pasangan</button>
-            <p className="text-[12.5px] text-ink-faint mt-1">Baris ke-N di kolom A dijodohkan dengan baris ke-N di kolom B.</p>
+            <p className="text-[12.5px] text-ink-faint mt-1">Baris ke-N di kolom A dijodohkan dengan baris ke-N di kolom B. Pasangan yang terjodohkan diberi warna — otomatis per urutan, bisa diganti per baris lewat palet.</p>
           </div>
           <div>
             <label className="label">Feedback bila salah pasang</label>
@@ -373,6 +613,58 @@ function TabelEditor({ a, set }: { a: LkpdAktivitas; set: (p: Partial<LkpdAktivi
         return { ...r, sel };
       }),
     });
+  };
+
+  const tabelRef = useRef<HTMLDivElement | null>(null);
+
+  /** Fokus ke sel (baris, kolom) — dipakai navigasi Enter ala spreadsheet. */
+  const fokusSel = (ri: number, ci: number) => {
+    const el = tabelRef.current?.querySelector<HTMLInputElement>(`[data-sel="${ri}-${ci}"]`);
+    if (el) {
+      el.focus();
+      el.select();
+    }
+  };
+
+  /**
+   * Tempel data Excel/CSV (TSV): satu tempelan membangun tabel sekaligus —
+   * grid diperluas otomatis dari sel aktif ke bawah & ke kanan.
+   */
+  const tempelTabel = (e: ClipboardEvent<HTMLInputElement>, ri: number, ci: number) => {
+    const teks = e.clipboardData.getData("text/plain");
+    if (!/[\t\n]/.test(teks)) return; // tanpa tab / baris baru → tempel biasa
+    e.preventDefault();
+    const matriks = teks
+      .replace(/\r\n?/g, "\n")
+      .replace(/\n+$/, "")
+      .split("\n")
+      .map((b) => b.split("\t"));
+    const nKolomBaru = Math.max(...matriks.map((m) => m.length));
+    const k = [...kolom];
+    while (k.length < ci + nKolomBaru) k.push(`Kolom ${k.length + 1}`);
+    const b = baris.map((r) => ({ sel: [...r.sel] }));
+    while (b.length < ri + matriks.length) b.push({ sel: [] });
+    matriks.forEach((m, di) => {
+      const sel = b[ri + di].sel;
+      while (sel.length < k.length) sel.push({ teks: "" });
+      m.forEach((v, dj) => {
+        sel[ci + dj] = { teks: v };
+      });
+    });
+    setTabel(k, b);
+    window.setTimeout(() => fokusSel(ri + matriks.length - 1, ci + nKolomBaru - 1), 30);
+  };
+
+  /** Enter = pindah ke bawah (di baris terakhir → tambah baris, persis seperti Excel). */
+  const enterKeBawah = (e: KeyboardEvent<HTMLInputElement>, ri: number, ci: number) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    if (ri + 1 < baris.length) {
+      fokusSel(ri + 1, ci);
+    } else {
+      tambahBaris();
+      window.setTimeout(() => fokusSel(ri + 1, ci), 30);
+    }
   };
 
   const ubahSel = (ri: number, ci: number, patch: Partial<LkpdSel>) =>
@@ -442,7 +734,7 @@ function TabelEditor({ a, set }: { a: LkpdAktivitas; set: (p: Partial<LkpdAktivi
         <span className="text-[12px] text-ink-faint">{kolom.length} kolom · {baris.length} baris · {nKunci} sel diisi siswa</span>
       </div>
 
-      <div className="overflow-x-auto rounded-lg border border-line bg-white">
+      <div ref={tabelRef} className="overflow-x-auto rounded-lg border border-line bg-white">
         <table className="w-full min-w-[620px] text-[13px]">
           <thead>
             <tr className="bg-wash/80 text-left align-bottom">
@@ -474,9 +766,48 @@ function TabelEditor({ a, set }: { a: LkpdAktivitas; set: (p: Partial<LkpdAktivi
                   const s = r.sel[ci] || { teks: "" };
                   const modeCentang = s.centang === true;
                   const modeKunci = !modeCentang && s.kunci !== undefined;
+                  const mode = modeCentang ? "centang" : modeKunci ? "kunci" : "teks";
+                  const gantiMode = (v: string) => {
+                    if (v === mode) return;
+                    if (v === "centang") {
+                      ubahSel(ri, ci, {
+                        centang: true,
+                        kunci: s.kunci === "true" || s.kunci === "false" ? s.kunci : "false",
+                        teks: undefined,
+                        feedbackBenar: s.feedbackBenar,
+                        feedbackSalah: s.feedbackSalah,
+                      });
+                    } else if (v === "kunci") {
+                      ubahSel(ri, ci, {
+                        kunci: s.centang ? "" : (s.teks ?? s.kunci ?? ""),
+                        teks: undefined,
+                        centang: undefined,
+                        feedbackBenar: s.feedbackBenar,
+                        feedbackSalah: s.feedbackSalah,
+                      });
+                    } else {
+                      ubahSel(ri, ci, {
+                        teks: s.centang ? (s.teks || "") : (s.teks ?? s.kunci ?? ""),
+                        kunci: undefined,
+                        centang: undefined,
+                        feedbackBenar: undefined,
+                        feedbackSalah: undefined,
+                      });
+                    }
+                  };
                   return (
                     <td key={ci} className="px-1.5 py-1.5">
                       <div className="space-y-1">
+                        <select
+                          className="input !py-0.5 !px-1 !text-[11.5px] w-full"
+                          value={mode}
+                          aria-label={`Mode sel baris ${ri + 1} kolom ${ci + 1}`}
+                          onChange={(e) => gantiMode(e.target.value)}
+                        >
+                          <option value="teks">📝 Teks</option>
+                          <option value="kunci">🔓 Diisi siswa</option>
+                          <option value="centang">☑ Centang</option>
+                        </select>
                         {modeCentang ? (
                           <>
                             <label className="flex items-center gap-2 rounded-lg border border-teal-300 bg-teal-50/40 px-2 py-1.5 text-[12.5px] text-ink">
@@ -484,6 +815,7 @@ function TabelEditor({ a, set }: { a: LkpdAktivitas; set: (p: Partial<LkpdAktivi
                                 type="checkbox"
                                 className="h-4 w-4 accent-teal-600"
                                 checked={(s.kunci || "false") === "true"}
+                                data-sel={`${ri}-${ci}`}
                                 aria-label={`Kunci centang baris ${ri + 1} kolom ${ci + 1}`}
                                 onChange={(e) => ubahSel(ri, ci, { kunci: e.target.checked ? "true" : "false" })}
                               />
@@ -491,16 +823,6 @@ function TabelEditor({ a, set }: { a: LkpdAktivitas; set: (p: Partial<LkpdAktivi
                             </label>
                             <input className="input !py-1 !text-[12px]" placeholder="✓ feedback bila benar" aria-label="Feedback benar" value={s.feedbackBenar || ""} onChange={(e) => ubahSel(ri, ci, { feedbackBenar: e.target.value })} />
                             <input className="input !py-1 !text-[12px]" placeholder="✗ feedback bila salah" aria-label="Feedback salah" value={s.feedbackSalah || ""} onChange={(e) => ubahSel(ri, ci, { feedbackSalah: e.target.value })} />
-                            <button
-                              className="text-[11.5px] text-ink-muted hover:text-primary"
-                              title="Sel ini tidak diisi siswa — hanya menampilkan teks"
-                              onClick={() => ubahSel(ri, ci, { teks: "", kunci: undefined, centang: undefined, feedbackBenar: undefined, feedbackSalah: undefined })}
-                            >🔒 jadi sel teks (terkunci)</button>
-                            <button
-                              className="text-[11.5px] text-ink-muted hover:text-primary"
-                              title="Sel ini diisi siswa lewat ketikan (kunci jawaban teks)"
-                              onClick={() => ubahSel(ri, ci, { kunci: "", centang: undefined, teks: undefined, feedbackBenar: undefined, feedbackSalah: undefined })}
-                            >⌨ jadi sel diisi siswa</button>
                           </>
                         ) : modeKunci ? (
                           <>
@@ -508,21 +830,14 @@ function TabelEditor({ a, set }: { a: LkpdAktivitas; set: (p: Partial<LkpdAktivi
                               className="input !py-1 !text-[12.5px] !border-amber-300 !bg-amber-50/40"
                               placeholder="kunci jawaban…"
                               aria-label={`Kunci baris ${ri + 1} kolom ${ci + 1}`}
+                              data-sel={`${ri}-${ci}`}
                               value={s.kunci || ""}
+                              onPaste={(e) => tempelTabel(e, ri, ci)}
+                              onKeyDown={(e) => enterKeBawah(e, ri, ci)}
                               onChange={(e) => ubahSel(ri, ci, { kunci: e.target.value })}
                             />
                             <input className="input !py-1 !text-[12px]" placeholder="✓ feedback bila benar" aria-label="Feedback benar" value={s.feedbackBenar || ""} onChange={(e) => ubahSel(ri, ci, { feedbackBenar: e.target.value })} />
                             <input className="input !py-1 !text-[12px]" placeholder="✗ feedback bila salah" aria-label="Feedback salah" value={s.feedbackSalah || ""} onChange={(e) => ubahSel(ri, ci, { feedbackSalah: e.target.value })} />
-                            <button
-                              className="text-[11.5px] text-ink-muted hover:text-primary"
-                              title="Sel ini tidak diisi siswa — hanya menampilkan teks"
-                              onClick={() => ubahSel(ri, ci, { teks: "", kunci: undefined, feedbackBenar: undefined, feedbackSalah: undefined })}
-                            >🔒 jadi sel teks (terkunci)</button>
-                            <button
-                              className="text-[11.5px] text-ink-muted hover:text-primary"
-                              title="Ganti jadi kotak centang benar/salah"
-                              onClick={() => ubahSel(ri, ci, { centang: true, kunci: "false", teks: undefined, feedbackBenar: undefined, feedbackSalah: undefined })}
-                            >☑ jadi kotak centang</button>
                           </>
                         ) : (
                           <>
@@ -530,19 +845,12 @@ function TabelEditor({ a, set }: { a: LkpdAktivitas; set: (p: Partial<LkpdAktivi
                               className="input !py-1 !text-[12.5px]"
                               placeholder="isi teks sel…"
                               aria-label={`Teks baris ${ri + 1} kolom ${ci + 1}`}
+                              data-sel={`${ri}-${ci}`}
                               value={s.teks || ""}
+                              onPaste={(e) => tempelTabel(e, ri, ci)}
+                              onKeyDown={(e) => enterKeBawah(e, ri, ci)}
                               onChange={(e) => ubahSel(ri, ci, { teks: e.target.value })}
                             />
-                            <button
-                              className="text-[11.5px] text-ink-muted hover:text-primary"
-                              title="Kosongkan sel ini untuk diisi siswa (tulis kunci & feedback)"
-                              onClick={() => ubahSel(ri, ci, { kunci: "", teks: undefined })}
-                            >🔓 jadi sel diisi siswa</button>
-                            <button
-                              className="text-[11.5px] text-ink-muted hover:text-primary"
-                              title="Sel ini jadi kotak centang benar/salah untuk siswa"
-                              onClick={() => ubahSel(ri, ci, { centang: true, kunci: "false", teks: undefined })}
-                            >☑ jadi kotak centang</button>
                           </>
                         )}
                       </div>
@@ -571,7 +879,9 @@ function TabelEditor({ a, set }: { a: LkpdAktivitas; set: (p: Partial<LkpdAktivi
       <div className="flex flex-wrap items-center gap-2">
         <button className="btn-ghost !py-1.5 !text-[12.5px]" onClick={tambahKolom}>+ Kolom</button>
         <button className="btn-ghost !py-1.5 !text-[12.5px]" onClick={tambahBaris}>+ Baris</button>
-        <span className="text-[11.5px] text-ink-faint">Sel teks = terkunci (fakta) · Sel diisi siswa = kunci teks · Kotak centang = benar/salah.</span>
+        <span className="text-[11.5px] text-ink-faint">
+          💡 <b>Tempel (Ctrl+V)</b> data Excel/CSV dari sel mana pun — tabel menyesuaikan otomatis. <b>Enter</b> = pindah ke bawah (baris terakhir menambah baris) · <b>Tab</b> = ke kanan. Mode sel: 📝 teks terkunci · 🔓 diisi siswa · ☑ centang.
+        </span>
       </div>
     </div>
   );

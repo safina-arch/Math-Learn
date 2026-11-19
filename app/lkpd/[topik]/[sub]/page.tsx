@@ -9,7 +9,7 @@ import { BlokRenderer } from "@/components/lkpd/blocks";
 import { AnswerUpload } from "@/components/answer-upload";
 import { PengawasKecurangan } from "@/components/pengawas-kecurangan";
 import { useStore } from "@/lib/store";
-import { cariProgress, missionTerjawab, nilaiSubtopic, progresSubtopic } from "@/lib/lkpd";
+import { cariProgress, kunciUraian, missionTerjawab, nilaiSubtopic, progresSubtopic } from "@/lib/lkpd";
 
 /**
  * Perjalanan misi bertahap (6 tahap saintifik) — WAJIB BERURUTAN:
@@ -278,7 +278,9 @@ export default function JourneyPage() {
                         <BlokRenderer
                           blok={b}
                           jawaban={prog?.jawaban?.[b.id]}
+                          uraian={prog?.jawaban?.[kunciUraian(b.id)]}
                           onSimpan={(t) => simpanJawabanLkpd(sub.id, b.id, t)}
+                          onSimpanUraian={(t) => simpanJawabanLkpd(sub.id, kunciUraian(b.id), t)}
                           readOnly={terkunci}
                           bukaKunci={bukaKunci}
                         />
