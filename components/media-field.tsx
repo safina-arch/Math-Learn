@@ -86,7 +86,7 @@ export function MediaField({
         <div className="flex items-start gap-3 rounded-lg border border-line bg-wash/40 p-2">
           {preview === "gambar" ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={url} alt="Pratinjau media" className="h-20 max-w-[160px] rounded-md border border-line bg-white object-cover" />
+            <img src={url} alt="Pratinjau media" className="h-28 max-w-[240px] rounded-md border border-line bg-white object-contain" />
           ) : (
             <video src={url} controls preload="metadata" className="h-24 w-44 rounded-md border border-line bg-black" />
           )}

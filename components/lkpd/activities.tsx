@@ -232,6 +232,33 @@ function IsiTabel({ a, awal, simpan }: { a: LkpdAktivitas; awal: NilaiAktivitas;
                   const key = `${ri}-${ci}`;
                   const s = r.sel[ci];
                   if (!s || s.teks !== undefined) return <td key={ci} className="px-3 py-2 text-ink-soft">{s?.teks ?? ""}</td>;
+                  // Kotak centang benar/salah — default tak tercentang (= "false").
+                  if (s.centang) {
+                    const tercentang = (val[key] || "false") === "true";
+                    const kunciCentang = s.kunci || "false";
+                    const benarC = dicek && (tercentang ? "true" : "false") === kunciCentang;
+                    const salahC = dicek && !benarC;
+                    return (
+                      <td key={ci} className="px-3 py-2 align-top">
+                        <label
+                          className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-[13.5px] cursor-pointer ${
+                            benarC ? "border-green-400 bg-green-50" : salahC ? "border-red-400 bg-red-50" : "border-line bg-white"
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            className="accent-teal-600"
+                            style={{ width: 18, height: 18 }}
+                            checked={tercentang}
+                            onChange={(e) => ubahSel(key, e.target.checked ? "true" : "false")}
+                          />
+                          <span>Centang</span>
+                        </label>
+                        {benarC ? <p className="text-[12px] text-green-700 mt-1">{s.feedbackBenar || "Benar ✓"}</p> : null}
+                        {salahC ? <p className="text-[12px] text-red-600 mt-1">{s.feedbackSalah || "Periksa lagi centanganmu."}</p> : null}
+                      </td>
+                    );
+                  }
                   const v = val[key] || "";
                   const benar = dicek && selSama(v, s.kunci);
                   const salah = dicek && !selSama(v, s.kunci);

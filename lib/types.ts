@@ -245,10 +245,12 @@ export interface LkpdAktivitas {
   baris?: { sel: LkpdSel[] }[];
 }
 
-/** Sel tabel: `teks` = terisi (fakta), `kunci` = diisi siswa lalu diperiksa. */
+/** Sel tabel: `teks` = terisi (fakta), `kunci` = diisi siswa lalu diperiksa,
+ * `centang` = kotak centang benar/salah (kunci berisi "true"/"false"). */
 export interface LkpdSel {
   teks?: string;
   kunci?: string;
+  centang?: boolean;
   feedbackBenar?: string;
   feedbackSalah?: string;
 }

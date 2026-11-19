@@ -1,4 +1,4 @@
-import type { LkpdBlock, LkpdMission, LkpdProgress, LkpdSubtopic, LkpdTopic } from "./types";
+import type { LkpdBlock, LkpdMission, LkpdProgress, LkpdSel, LkpdSubtopic, LkpdTopic } from "./types";
 import { nowIso, uid } from "./utils";
 
 /** Enam tahap pembelajaran (saintifik) — dipakai sebagai template mission baru. */
@@ -151,13 +151,16 @@ export function nilaiBlok(blok: LkpdBlock, jawaban?: string): boolean | null {
   const a = blok.aktivitas;
   const st = parseAktivitas(jawaban);
   if (a.tipe === "isi-tabel") {
-    const kunciSel = (a.baris || []).flatMap((r) => r.sel).filter((s) => (s.kunci || "").trim() !== "");
-    if (!kunciSel.length) return null;
+    // Sel bernilai: berkunci (isi teks) ATAU kotak centang (kunci "true"/"false").
+    const bernilai = (s: LkpdSel) => s.centang || (s.kunci || "").trim() !== "";
+    const kunciEfektif = (s: LkpdSel) => (s.centang ? s.kunci || "false" : s.kunci);
+    const semua = (a.baris || []).flatMap((r) => r.sel);
+    if (!semua.some(bernilai)) return null;
     const val = st?.val || {};
-    // Semua sel berkunci harus terisi dan sesuai kunci.
-    const isi = (a.baris || []).flatMap((r, ri) => r.sel.map((s, ci) => ({ s, v: val[`${ri}-${ci}`] }))).filter((x) => (x.s.kunci || "").trim() !== "");
-    if (isi.some((x) => !(x.v || "").trim())) return false;
-    return isi.every((x) => selSama(x.v, x.s.kunci));
+    // Sel isi teks harus terisi; sel centang selalu terjawab (default = tak tercentang = false).
+    const isi = (a.baris || []).flatMap((r, ri) => r.sel.map((s, ci) => ({ s, v: val[`${ri}-${ci}`] }))).filter((x) => bernilai(x.s));
+    if (isi.some((x) => !x.s.centang && !(x.v || "").trim())) return false;
+    return isi.every((x) => selSama(x.s.centang ? (x.v || "false") : x.v, kunciEfektif(x.s)));
   }
   if (a.tipe === "cocokkan") {
     const kiri = a.kiri || [];
@@ -234,9 +237,11 @@ export function missionTerjawab(
     const st = parseAktivitas(jwb);
     if (a.tipe === "isi-tabel") {
       const val = st?.val || {};
-      const ada = (a.baris || []).some((r, ri) => r.sel.some((s, ci) => (s.kunci || "").trim() !== "" && (val[`${ri}-${ci}`] || "").trim()));
+      // Sel bernilai: berkunci ATAU kotak centang (centang selalu terjawab — default tak tercentang).
+      const bernilai = (s: LkpdSel) => s.centang || (s.kunci || "").trim() !== "";
+      const ada = (a.baris || []).some((r, ri) => r.sel.some((s, ci) => bernilai(s) && (s.centang || (val[`${ri}-${ci}`] || "").trim())));
       const lengkap = (a.baris || []).every((r, ri) =>
-        r.sel.every((s, ci) => (s.kunci || "").trim() === "" || (val[`${ri}-${ci}`] || "").trim() !== ""),
+        r.sel.every((s, ci) => !bernilai(s) || s.centang || (val[`${ri}-${ci}`] || "").trim() !== ""),
       );
       if (!ada || !lengkap) kurang.push(b.judul || "Aktivitas tabel");
       continue;

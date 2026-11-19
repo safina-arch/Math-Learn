@@ -245,11 +245,13 @@ function IsiAktivitas({ a, st }: { a: LkpdAktivitas; st: StateAktivitas | null }
   const kolom = a.kolom || [];
   const baris = a.baris || [];
   const terisi = Object.values(val).filter((v) => String(v).trim() !== "").length;
+  // Kotak centang selalu ada keadaan (default = tak tercentang) — tabel tetap tampil.
+  const adaCentang = baris.some((r) => r.sel.some((s) => s?.centang));
   // Toleransi data lama: jumlah kolom tabel = terlebar antara header & sel terpanjang.
   const nKolom = Math.max(kolom.length, ...baris.map((r) => r.sel.length));
   return (
     <div>
-      {terisi === 0 ? (
+      {terisi === 0 && !adaCentang ? (
         <p className="text-[13px] text-ink-faint italic">Belum ada sel yang diisi</p>
       ) : (
         <div className="overflow-x-auto">
@@ -268,6 +270,22 @@ function IsiAktivitas({ a, st }: { a: LkpdAktivitas; st: StateAktivitas | null }
                     const s = r.sel[ci];
                     if (!s || s.teks !== undefined) return <td key={ci} className="px-2 py-1.5 text-ink-soft">{s?.teks ?? ""}</td>;
                     const key = `${ri}-${ci}`;
+                    if (s.centang) {
+                      const tercentang = (val[key] || "false") === "true";
+                      const benarC = dicek && (tercentang ? "true" : "false") === (s.kunci || "false");
+                      const salahC = dicek && !benarC;
+                      return (
+                        <td key={ci} className="px-2 py-1.5">
+                          <span
+                            className={`flex items-center gap-1.5 rounded border px-2 py-1 text-[13px] ${
+                              benarC ? "border-green-300 bg-green-50 text-green-800" : salahC ? "border-red-300 bg-red-50 text-red-700" : "border-line bg-white"
+                            }`}
+                          >
+                            <input type="checkbox" checked={tercentang} readOnly style={{ width: 15, height: 15 }} className="accent-teal-600" /> {tercentang ? "Tercentang" : "Tidak"}
+                          </span>
+                        </td>
+                      );
+                    }
                     const v = val[key] || "";
                     const benar = dicek && selSama(v, s.kunci);
                     const salah = dicek && !selSama(v, s.kunci);

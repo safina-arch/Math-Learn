@@ -204,7 +204,7 @@ export default function KelolaLkpdPage() {
                   </div>
                 ))}
                 <button className="btn-ghost w-full !py-1.5 !text-[12.5px]" onClick={tambahMission}>+ Tambah Mission</button>
-                <p className="text-[11.5px] text-ink-faint px-1 pt-1">Default: 6 tahap (Mengamati → … → Mengomunikasikan → Mengevaluasi). Mission tambahan boleh ditambahkan sesuai kebutuhan materi.</p>
+                <p className="text-[11.5px] text-ink-faint px-1 pt-1">Susunan tahapan bebas: ubah nama & ikon, geser urutan (▲▼), tambah atau hapus mission sesuai kebutuhan materi — tampilan siswa otomatis mengikuti.</p>
               </div>
 
               {/* Editor mission */}

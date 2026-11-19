@@ -76,10 +76,14 @@ export default function JourneyPage() {
   // Batas urutan: jumlah mission berurutan dari awal yang sudah selesai.
   let batas = 0;
   while (batas < missions.length && selesaiSet.has(missions[batas].id)) batas++;
-  const aman = Math.min(Math.max(idx, 0), Math.max(0, Math.min(batas, missions.length - 1)));
+  // Kunci urutan tahapan HANYA untuk siswa — guru & admin bebas membuka semua tahap
+  // (memeriksa hasil editan tanpa perlu menyelesaikan mission sebelumnya).
+  const peranGuru = user?.role === "guru" || user?.role === "admin";
+  const batasAtas = peranGuru ? Math.max(0, missions.length - 1) : Math.min(batas, missions.length - 1);
+  const aman = Math.min(Math.max(idx, 0), Math.max(0, batasAtas));
   const m: typeof missions[number] | undefined = missions[aman];
   const semuaSelesai = missions.length > 0 && batas >= missions.length;
-  const boleh = (i: number) => i <= batas;
+  const boleh = (i: number) => peranGuru || i <= batas;
   // LKPD sudah disubmit → terkunci (sekali kerja), data pengerjaan pertama tetap ada.
   const terkunci = Boolean(prog?.dikumpulkan);
   // Pengawas kecurangan berhenti menghitung begitu LKPD dikumpulkan.
@@ -168,9 +172,15 @@ export default function JourneyPage() {
             ) : null}
           </div>
 
-          <div className="rounded-lg border border-primary-200 bg-primary-50/60 px-3.5 py-2.5 text-[13px] text-primary-800 mb-4">
-            🔒 <b>Urutan wajib:</b> mission berikutnya terbuka setelah mission ini ditandai selesai. Jawabanmu tetap tersimpan saat berpindah tahap.
-          </div>
+          {peranGuru ? (
+            <div className="rounded-lg border border-line bg-wash px-3.5 py-2.5 text-[13px] text-ink-muted mb-4">
+              👁 <b>Mode guru/admin:</b> seluruh tahap terbuka untuk diperiksa — penguncian urutan hanya berlaku untuk siswa.
+            </div>
+          ) : (
+            <div className="rounded-lg border border-primary-200 bg-primary-50/60 px-3.5 py-2.5 text-[13px] text-primary-800 mb-4">
+              🔒 <b>Urutan wajib:</b> mission berikutnya terbuka setelah mission ini ditandai selesai. Jawabanmu tetap tersimpan saat berpindah tahap.
+            </div>
+          )}
 
           {terkunci ? (
             <div className="rounded-lg border border-amber-300 bg-amber-50 px-3.5 py-2.5 text-[13px] text-amber-900 mb-4">

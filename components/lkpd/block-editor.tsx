@@ -348,7 +348,8 @@ function AktivitasEditor({ blok, onChange }: { blok: LkpdBlock; onChange: (p: Pa
 /**
  * Editor tabel sebagai TABEL sungguhan (bukan kartu-kartu terpisah):
  * rename/pindah/hapus kolom, pindah/duplikat/hapus baris, dan per sel bisa
- * berganti antara **sel teks (terkunci)** ↔ **sel diisi siswa (kunci + feedback)**.
+ * berganti antara **sel teks (terkunci)** ↔ **sel diisi siswa (kunci + feedback)**
+ * ↔ **kotak centang benar/salah**.
  * Struktur sel & kolom selalu disinkronkan (bila jumlah sel ≠ jumlah kolom,
  * sel dipotong/ditambah otomatis) supaya tabel siswa selalu rapi sejajar.
  */
@@ -471,11 +472,37 @@ function TabelEditor({ a, set }: { a: LkpdAktivitas; set: (p: Partial<LkpdAktivi
                 <td className="px-2 py-2 text-[11.5px] text-ink-faint">{ri + 1}</td>
                 {kolom.map((_, ci) => {
                   const s = r.sel[ci] || { teks: "" };
-                  const modeKunci = s.kunci !== undefined;
+                  const modeCentang = s.centang === true;
+                  const modeKunci = !modeCentang && s.kunci !== undefined;
                   return (
                     <td key={ci} className="px-1.5 py-1.5">
                       <div className="space-y-1">
-                        {modeKunci ? (
+                        {modeCentang ? (
+                          <>
+                            <label className="flex items-center gap-2 rounded-lg border border-teal-300 bg-teal-50/40 px-2 py-1.5 text-[12.5px] text-ink">
+                              <input
+                                type="checkbox"
+                                className="h-4 w-4 accent-teal-600"
+                                checked={(s.kunci || "false") === "true"}
+                                aria-label={`Kunci centang baris ${ri + 1} kolom ${ci + 1}`}
+                                onChange={(e) => ubahSel(ri, ci, { kunci: e.target.checked ? "true" : "false" })}
+                              />
+                              <span>Harus dicentang</span>
+                            </label>
+                            <input className="input !py-1 !text-[12px]" placeholder="✓ feedback bila benar" aria-label="Feedback benar" value={s.feedbackBenar || ""} onChange={(e) => ubahSel(ri, ci, { feedbackBenar: e.target.value })} />
+                            <input className="input !py-1 !text-[12px]" placeholder="✗ feedback bila salah" aria-label="Feedback salah" value={s.feedbackSalah || ""} onChange={(e) => ubahSel(ri, ci, { feedbackSalah: e.target.value })} />
+                            <button
+                              className="text-[11.5px] text-ink-muted hover:text-primary"
+                              title="Sel ini tidak diisi siswa — hanya menampilkan teks"
+                              onClick={() => ubahSel(ri, ci, { teks: "", kunci: undefined, centang: undefined, feedbackBenar: undefined, feedbackSalah: undefined })}
+                            >🔒 jadi sel teks (terkunci)</button>
+                            <button
+                              className="text-[11.5px] text-ink-muted hover:text-primary"
+                              title="Sel ini diisi siswa lewat ketikan (kunci jawaban teks)"
+                              onClick={() => ubahSel(ri, ci, { kunci: "", centang: undefined, teks: undefined, feedbackBenar: undefined, feedbackSalah: undefined })}
+                            >⌨ jadi sel diisi siswa</button>
+                          </>
+                        ) : modeKunci ? (
                           <>
                             <input
                               className="input !py-1 !text-[12.5px] !border-amber-300 !bg-amber-50/40"
@@ -491,6 +518,11 @@ function TabelEditor({ a, set }: { a: LkpdAktivitas; set: (p: Partial<LkpdAktivi
                               title="Sel ini tidak diisi siswa — hanya menampilkan teks"
                               onClick={() => ubahSel(ri, ci, { teks: "", kunci: undefined, feedbackBenar: undefined, feedbackSalah: undefined })}
                             >🔒 jadi sel teks (terkunci)</button>
+                            <button
+                              className="text-[11.5px] text-ink-muted hover:text-primary"
+                              title="Ganti jadi kotak centang benar/salah"
+                              onClick={() => ubahSel(ri, ci, { centang: true, kunci: "false", teks: undefined, feedbackBenar: undefined, feedbackSalah: undefined })}
+                            >☑ jadi kotak centang</button>
                           </>
                         ) : (
                           <>
@@ -506,6 +538,11 @@ function TabelEditor({ a, set }: { a: LkpdAktivitas; set: (p: Partial<LkpdAktivi
                               title="Kosongkan sel ini untuk diisi siswa (tulis kunci & feedback)"
                               onClick={() => ubahSel(ri, ci, { kunci: "", teks: undefined })}
                             >🔓 jadi sel diisi siswa</button>
+                            <button
+                              className="text-[11.5px] text-ink-muted hover:text-primary"
+                              title="Sel ini jadi kotak centang benar/salah untuk siswa"
+                              onClick={() => ubahSel(ri, ci, { centang: true, kunci: "false", teks: undefined })}
+                            >☑ jadi kotak centang</button>
                           </>
                         )}
                       </div>
@@ -534,7 +571,7 @@ function TabelEditor({ a, set }: { a: LkpdAktivitas; set: (p: Partial<LkpdAktivi
       <div className="flex flex-wrap items-center gap-2">
         <button className="btn-ghost !py-1.5 !text-[12.5px]" onClick={tambahKolom}>+ Kolom</button>
         <button className="btn-ghost !py-1.5 !text-[12.5px]" onClick={tambahBaris}>+ Baris</button>
-        <span className="text-[11.5px] text-ink-faint">Sel teks = terkunci (fakta) · Sel diisi siswa = kunci jawaban + feedback untuk siswa.</span>
+        <span className="text-[11.5px] text-ink-faint">Sel teks = terkunci (fakta) · Sel diisi siswa = kunci teks · Kotak centang = benar/salah.</span>
       </div>
     </div>
   );

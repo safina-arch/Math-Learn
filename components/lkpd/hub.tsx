@@ -42,7 +42,7 @@ export function LkpdHub() {
     <div>
       <PageHeader
         title="📚 LKPD — Learning Journey"
-        desc="Pilih materi yang ingin kamu pelajari. Setiap materi berisi submateri dengan perjalanan misi 6 tahap berpikir."
+        desc="Pilih materi yang ingin kamu pelajari. Setiap materi berisi submateri dengan perjalanan misi bertahap."
         right={manage ? <button className="btn-primary text-[13px]" onClick={() => setModal("baru")}>+ Tambah Materi</button> : undefined}
       />
 
@@ -61,7 +61,7 @@ export function LkpdHub() {
                 {t.thumbnail ? (
                   <div className="-mx-4 -mt-4 mb-3 overflow-hidden rounded-t-xl2 border-b border-line bg-wash">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={t.thumbnail} alt="" className="h-28 w-full object-cover" onError={(e) => { e.currentTarget.style.display = "none"; }} />
+                    <img src={t.thumbnail} alt="" className="h-32 w-full bg-white object-contain" onError={(e) => { e.currentTarget.style.display = "none"; }} />
                   </div>
                 ) : null}
                 <div className="flex items-start gap-3">

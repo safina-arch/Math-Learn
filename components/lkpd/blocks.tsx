@@ -59,7 +59,7 @@ export function BlokRenderer({
             </a>
           ) : blok.url ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={blok.url} alt={blok.teks || "Gambar"} className="w-full max-h-[340px] object-cover" />
+            <img src={blok.url} alt={blok.teks || "Gambar"} className="w-full max-h-[340px] object-contain bg-white" />
           ) : (
             <div className="h-[170px] w-full flex items-center justify-center bg-gradient-to-br from-primary-50 to-wash border-b border-line">
               <span className="text-[13.5px] text-ink-muted text-center px-6">🖼️ {blok.teks || "Gambar ilustrasi"}</span>
@@ -241,12 +241,14 @@ function RingkasAktivitas({ a, nilai, tampilkanKunci }: { a: LkpdAktivitas; nila
   const kolom = a.kolom || [];
   const baris = a.baris || [];
   const terisi = Object.values(val).filter((v) => String(v).trim() !== "").length;
+  // Kotak centang selalu ada isinya (default = tak tercentang) — tabel tetap tampil.
+  const adaCentang = baris.some((r) => r.sel.some((s) => s?.centang));
   // Toleransi data lama: jumlah kolom tabel = terlebar antara header & sel terpanjang.
   const nKolom = Math.max(kolom.length, ...baris.map((r) => r.sel.length));
   return (
     <div className="rounded-xl border border-line bg-wash/50 card-pad !p-3.5">
       <p className="text-[13px] font-semibold mb-2">📊 {a.instruksi}</p>
-      {terisi === 0 ? (
+      {terisi === 0 && !adaCentang ? (
         <p className="text-[13px] text-ink-faint italic">Belum ada sel yang diisi</p>
       ) : (
         <div className="overflow-x-auto">
@@ -264,6 +266,17 @@ function RingkasAktivitas({ a, nilai, tampilkanKunci }: { a: LkpdAktivitas; nila
                   {Array.from({ length: nKolom }, (_, ci) => {
                     const s = r.sel[ci];
                     if (!s || s.teks !== undefined) return <td key={ci} className="px-2 py-1.5 text-ink-soft">{s?.teks ?? ""}</td>;
+                    if (s.centang) {
+                      const tercentang = (val[`${ri}-${ci}`] || "false") === "true";
+                      const benarC = tampilkanKunci && (tercentang ? "true" : "false") === (s.kunci || "false");
+                      return (
+                        <td key={ci} className="px-2 py-1.5">
+                          <span className={`flex items-center gap-1.5 rounded border px-2 py-1 text-[13px] ${benarC ? "border-green-300 bg-green-50 text-green-800" : "border-line bg-white"}`}>
+                            <input type="checkbox" checked={tercentang} readOnly style={{ width: 15, height: 15 }} className="accent-teal-600" /> {tercentang ? "Tercentang" : "Tidak"}
+                          </span>
+                        </td>
+                      );
+                    }
                     const kunci = (s.kunci || "").trim();
                     const v = val[`${ri}-${ci}`] || "";
                     const benar = tampilkanKunci && kunci && selSama(v, kunci);
