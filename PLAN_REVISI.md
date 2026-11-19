@@ -388,6 +388,32 @@ Verifikasi: `npm.cmd run build` ✅ lulus (lint + type check, 26 route) → comm
 - Data produksi bersih: semua blok isi-tabel kolom=sel per baris konsisten (tidak ada ragged); seluruh E2E tanpa simpan (draft dibuang) atau dengan rollback penuh.
 
 
-## Status akhir: SELURUH PLAN SELESAI & LIVE (Gelombang 1–15)
+## Gelombang 16 — 4 penyesuaian: kunci tahapan hanya siswa, kotak centang di tabel, foto utuh, tahapan bebas (19 Nov 2026)
+
+### 1. Fitur kunci tahapan hanya untuk siswa
+- `app/lkpd/[topik]/[sub]/page.tsx`: `peranGuru` (role guru/admin) → `boleh(i) = peranGuru || i <= batas` dan `batasAtas` dibuka penuh → **seluruh tahap terbuka bagi guru & admin** di halaman journey (bisa memeriksa hasil editan tanpa menyelesaikan mission sebelumnya — tidak bolak-balik ke Kelola). Timeline `pilihMission` ikut via `boleh`.
+- Banner: siswa tetap melihat "🔒 Urutan wajib…"; guru/admin melihat "👁 Mode guru/admin: seluruh tahap terbuka — penguncian urutan hanya berlaku untuk siswa."
+- Penguncian "sekali kerja" (`dikumpulkan`) & aturan kunci/pembahasan (`kunciTerbuka`) TIDAK diubah.
+
+### 2. Mode ketiga tabel: kotak centang benar/salah (dipilih user)
+- **`lib/types.ts`**: `LkpdSel.centang?: boolean` — sel mode centang memakai `kunci` berisi `"true"`/`"false"` (string → kompatibel `selSama` & filter kunci).
+- **`lib/lkpd.ts` (penilaian)**: helper `bernilai(s) = s.centang || kunci non-kosong` + `kunciEfektif` (centang → `s.kunci || "false"`). `nilaiBlok`: sel isi teks tetap wajib terisi; **sel centang selalu terjawab (default tak tercentang = false)**. `missionTerjawab`: sel centang dihitung `ada`/`lengkap` otomatis. Semantik lama (tanpa kunci tak pernah benar) tidak berubah.
+- **Editor (`block-editor.tsx`)**: `modeCentang` dicek sebelum `modeKunci`; UI per sel = checkbox **"Harus dicentang"** (menentukan kunci) + feedback benar/salah + tombol ganti mode ("🔒 jadi sel teks" / "⌨ jadi sel diisi siswa"); mode teks & kunci kini punya tombol **"☑ jadi kotak centang"** (kunci default `"false"`).
+- **Renderer** di 3 tempat: `activities.tsx` `IsiTabel` → checkbox interaktif siswa + warna & feedback saat "Periksa jawaban"; `blocks.tsx` `RingkasAktivitas` & `cek.tsx` → checkbox readonly + label Tercentang/Tidak, hijau bila sesuai kunci saat tampilkan kunci/dicek; keduanya ikut menampilkan tabel bila hanya berisi sel centang (walau `val` masih kosong).
+
+### 3. Preview foto tidak ter-zoom (utuh)
+- `media-field.tsx` pratinjau editor: `h-20 object-cover` (ter-crop) → **`h-28 max-w-[240px] object-contain bg-white`** (foto tampil utuh).
+- `blocks.tsx` gambar di LKPD siswa: `max-h-[340px] object-cover` → **`object-contain bg-white`**.
+- `hub.tsx` thumbnail sampul topik: `h-28 object-cover` → **`h-32 object-contain bg-white`**.
+
+### 4. Susunan tahapan bebas penuh + petunjuk dinetralisasi
+- Editor Kelola sudah lengkap (tambah/hapus mission, ubah ikon & judul, geser ▲▼) — diperkuat dengan teks: catatan "Default: 6 tahap (…)" → **"Susunan tahapan bebas: ubah nama & ikon, geser urutan (▲▼), tambah atau hapus mission sesuai kebutuhan materi — tampilan siswa otomatis mengikuti."**
+- Hub LKPD: "perjalanan misi **6 tahap berpikir**" → "perjalanan misi **bertahap**" (tak memaksa jumlah tahap).
+- Tampilan siswa (`m.ikon`/`m.judul`) sudah dinamis mengikuti mission → ikut otomatis.
+
+### Verifikasi
+- `npm run build` lulus (27 route).
+
+## Status akhir: SELURUH PLAN SELESAI & LIVE (Gelombang 1–16)
 
 Tidak ada langkah tersisa. Perubahan berikutnya: edit kode → `git push origin main` → Vercel auto-build (env sudah tersimpan di project Vercel). Kredensial tersimpan di `.env.local` (ter-ignore git).
