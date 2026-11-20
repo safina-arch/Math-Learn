@@ -414,6 +414,53 @@ Verifikasi: `npm.cmd run build` ✅ lulus (lint + type check, 26 route) → comm
 ### Verifikasi
 - `npm run build` lulus (27 route).
 
-## Status akhir: SELURUH PLAN SELESAI & LIVE (Gelombang 1–16)
+## Gelombang 17 — 7 permintaan LKPD: Benar/Salah, seret multi-area, urutkan+undo, editor tabel ala Excel, warna pasangan, instruksi multi-baris, PG+uraian (20 Nov 2026) — build lulus (27 route) — LIVE (commit `509566c`, deploy `dpl_EQW5Drn9htZ2m92YcC446XZofJnM` READY, verifikasi produksi PASS)
+
+### 1. Aktivitas baru: Benar/Salah
+- **`lib/types.ts`**: `LkpdAktivitasTipe + "benar-salah"`; field `pernyataan: { id, teks, kunci: "true"|"false", feedbackBenar?, feedbackSalah? }`.
+- **`activities.tsx` (`BenarSalah`)**: tombol ✓ Benar / ✗ Salah per pernyataan; **Periksa jawaban** hanya aktif setelah semua pernyataan terjawab; Ulangi; state `pilih`/`dicek` persist ke progres (bolak-balik tak hilang). Setelah dicek: kartu pernyataan hijau/merah + feedback guru (fallback kunci jawaban).
+- **`lib/lkpd.ts`**: `nilaiBlok` → null bila belum `dicek`, benar bila semua `pilih === kunci`; `missionTerjawab` menuntut semua pernyataan terjawab.
+- **Editor**: baris pernyataan (teks + select kunci ✓Benar/✗Salah + feedback benar/salah); auto-init **2 pernyataan** saat ganti tipe.
+
+### 2. Seret-slot: 2+ area tujuan custom (seret ATAU klik)
+- **`lib/types.ts`**: `areas: { id, nama }[]` + `kunciArea?` per kartu (field lama `area` tetap didukung).
+- **`activities.tsx` (SeretSlot redesain)**: pool kartu di atas → grid 2+ area tujuan; **seret (drag & drop) atau klik-kartu → klik-area** (alternatif tanpa mouse); tombol **Undo** (tumpukan 30 langkah) + **Reset**; kartu terpasang bisa dipindah/dikembalikan (↩); bila kartu punya `kunciArea` → tanda **✓/✗ hijau-merah langsung** saat ditempatkan; temuan tampil bila semua kartu terpasang & benar.
+- **Editor**: manager area (tambah/hapus/rename, minimal 2, maks 8; hapus area → kunci kartu terkait otomatis dilepas) + select **"Kunci area (opsional)"** per kartu.
+- **`lib/lkpd.ts`**: helper `posisiKartu()` — state baru `posisi` (kartuId→areaId); data lama `diArea` dikonversi ke area pertama; `nilaiBlok` seret → null bila belum semua kartu terpasang / tanpa kunci, dinilai per kartu; `missionTerjawab` menuntut semua kartu terposisi.
+
+### 3. Aktivitas baru: Urutkan kartu (dengan Undo, UI disederhanakan)
+- **`lib/types.ts`**: `tipe "urutkan"`; kartu memakai field `kartu` (label + feedback per langkah).
+- **`activities.tsx` (Urutkan)**: urutan awal **deterministik = urutan editor dibalik** (tantangan stabil antar sesi, tanpa acak); **seret baris (drag & drop) atau tombol ↑▼ besar**; **Undo** + Ulangi dari awal; wajib tekan **Periksa urutan** (`dicek`) → ✓/✗ per posisi + daftar feedback langkah yang salah. Semua langkah non-final (Undo selalu bisa).
+- **`lib/lkpd.ts`**: `nilaiBlok` → null bila belum `dicek`/panjang tak cocok, benar bila urutan == urutan editor; `missionTerjawab` menuntut `dicek` + urutan lengkap.
+- **Editor**: daftar kartu = **urutan BENAR (kunci)** + feedback per kartu; auto-init 3 kartu; helper text menjelaskan siswa memulai dalam keadaan dibalik.
+
+### 4. Editor tabel ala Excel
+- **Tempel TSV (`Ctrl+V`)** dari Excel/CSV di sel mana pun → grid **diekspansi otomatis** ke bawah & kanan dari sel aktif (tambah kolom/baris otomatis), fokus pindah ke sel akhir tempelan.
+- **Enter = pindah ke bawah**; di baris terakhir → **tambah baris** lalu fokus ke baris baru. Tab tetap ala browser (ke kanan).
+- **Mode sel jadi `<select>` compact** di tiap sel: 📝 Teks (terkunci) / 🔓 Diisi siswa / ☑ Centang — mengganti 2 tombol teks (lebih rapi di layar sempit); ganti mode mempertahankan teks/kunci/feedback yang relevan.
+- Helper `fokusSel(ri, ci)` via `data-sel` + ref tabel; instruksi toolbar diperbarui.
+
+### 5. Warna berbeda tiap pasangan cocokkan (palet custom guru)
+- **`lib/types.ts`**: `warnaPasangan?: Record<kiriId, hex>`.
+- **`activities.tsx`**: export `PALET_PASANGAN` (8 warna ringan, teks tetap terbaca) + `warnaPasangan(a, id)` — custom guru bila ada, kalau tidak palet otomatis per urutan baris; tombol kiri (A) & kanan (B) yang sudah terjodohkan diberi warna **identik** → pasangan langsung terlihat nyambung.
+- **Editor**: baris pasangan jadi kartu + baris swatch (auto + 8 warna) per pasangan.
+
+### 6. Instruksi bisa multi-baris (Enter)
+- `AktivitasEditor`: instruksi `input` → **textarea**; blok teks `Pertanyaan`/`Teks`/`Essay` sudah textarea dari awal. Tampilan siswa (`activities.tsx`) merender `\n` apa adanya.
+
+### 7. Satu content block memuat 2 konten: PG + uraian pendamping (essay)
+- **`lib/types.ts`**: `LkpdPertanyaan.uraian?: boolean` + `teksUraian?: string`.
+- **`lib/lkpd.ts`**: kunci terpisah `kunciUraian(blokId) = blokId + "::uraian"` (helper `kunciUraian`); `nilaiBlok` → null bila uraian kosong (PG dinilai otomatis, uraian menunggu pemeriksaan); `nilaiKerja` menghitung uraian sebagai `terbuka` (+ `kurang` bila kosong) → status **menunggu pemeriksaan**; `missionTerjawab` menuntut uraian terisi.
+- **`blocks.tsx`**: `BlokRenderer` terima `uraian`/`onSimpanUraian`; textarea uraian di bawah opsi PG (label = prompt guru); `RingkasAktivitas` menampilkan pernyataan/urutan hasil jawaban.
+- **`cek.tsx` (guru)**: BlokCek menampilkan **"✍️ Uraian pendamping siswa"** + catatan dinilai manual; ringkas jawaban menyebut uraian terisi; panel feedback per soal ikut terbuka bila uraian terisi.
+- **Editor**: toggle **"✍️ Sertakan uraian pendamping"** di PertanyaanEditor + input prompt.
+
+### E2E browser (Admin, produksi — tanpa menyimpan draft)
+- Editor: default seret **2 area** + instruksi textarea multi-baris ✓ · ganti tipe → auto-init **2 pernyataan** / **3 kartu** ✓ · kunci area per kartu ✓ · palet 16 swatch + toggle auto ✓ · toggle uraian → prompt muncul ✓.
+- Tabel Excel: **Enter** → baris baru + fokus pindah (sel 4→4, aktif `1-0`) ✓ · **tempel TSV 2×3** → grid 2×3 terisi semua + fokus ke sel akhir `1-2` ✓ · mode sel per sel + ganti mode teks→diisi-siswa (kunci ikut terbawa) ✓.
+- Preview kelola (interaktif, tanpa persist): urutkan **↑** → urutan berubah, **Undo** → kembali, **Periksa urutan** → ✓/✗ + peringatan ✓ · benar-salah pilih semua + **Periksa** → 2 kartu hijau + "Semua pernyataan tepat!" ✓ · seret klik-kartu→klik-area: salah area = **✗**, dipindah ke area kunci = **✓ hijau** ✓ · cocokkan Waktu–Jam diberi warna `#DBEAFE` ✓ · label uraian tampil sesuai prompt ✓.
+- Regresi: isi-tabel legacy `pb-dasar-m3` render (1 tabel, 4 sel diisi siswa) ✓ · mode guru/admin journey ✓ · **0 error console** ✓ · **draft E2E TIDAK tersimpan** (dialog `beforeunload` terbuka → reload kelola: "Belum disimpan" hilang, Mengamati tetap 4 blok, data produksi utuh) ✓.
+
+## Status akhir: SELURUH PLAN SELESAI & LIVE (Gelombang 1-17)
 
 Tidak ada langkah tersisa. Perubahan berikutnya: edit kode → `git push origin main` → Vercel auto-build (env sudah tersimpan di project Vercel). Kredensial tersimpan di `.env.local` (ter-ignore git).
